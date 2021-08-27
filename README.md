@@ -13,10 +13,18 @@ MinFS helps legacy applications use modern object stores with minimal config cha
 ```
 export MINIO_ACCESS_KEY=minioadmin
 export MINIO_SECRET_KEY=minioadmin
-go build . && ./minfs http://localhost:9000/project-1 mnt
+go build . && ./minfs mnt http://localhost:9000/project-1
 ```
-
+## Docker run:
+```
+docker run \
+	-v /host/mount/location:/lunafs:rshared \
+	--device /dev/fuse --cap-add SYS_ADMIN \
+	-e MINIO_ACCESS_KEY=minioadmin -e MINIO_SECRET_KEY=minioadmin \
+	minfs http://localhost:9000/project-1
+```
 ## Changes
+- Swap argument order
 - Run as user, not as root
 - Run as user process, not a daemon
 - Persistent file caching using MD5 checksum
