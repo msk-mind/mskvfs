@@ -9,6 +9,13 @@ MinFS helps legacy applications use modern object stores with minimal config cha
 # Architecture
 ![architecture](https://raw.githubusercontent.com/minio/minfs/master/MinFS.svg?sanitize=true)
 
+### Run 
+```
+export MINIO_ACCESS_KEY=minioadmin
+export MINIO_SECRET_KEY=minioadmin
+go build . && ./minfs http://localhost:9000/project-1 mnt
+```
+
 ## POSIX Compatibility
 > MinFS is not a POSIX conformant filesystem and it does not intend to be one. MinFS is built for legacy applications that needs to access an object store but does not expect strict POSIX compatibility. Please use MinFS if this fits your needs.
 
@@ -31,12 +38,12 @@ Download the pre-built RPMs from [here](https://github.com/minio/minfs/releases/
 yum install minfs-0.0.20170226202056-1.x86_64.rpm
 ```
 
-### RUN
-```
-export MINIO_ACCESS_KEY=minioadmin
-export MINIO_SECRET_KEY=minioadmin
-go build . && ./minfs http://pllimsksparky3:9000/project-2 mnt
-```
+
+
+
+
+
+
 
 ### Update `config.json`
 Create a new `config.json` in /etc/minfs directory with your S3 server access and secret keys.
