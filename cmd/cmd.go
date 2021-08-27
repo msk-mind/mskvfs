@@ -96,8 +96,8 @@ func NewApp() *cli.App {
 				opts = append(opts, minfs.Debug())
 			}
 
-			target := c.Args().Get(0)
-			mountpoint := c.Args().Get(1)
+			target := c.Args().Get(1)
+			mountpoint := c.Args().Get(0)
 
 			// Set permissions vs executing username
 			user, err := user.Current()
