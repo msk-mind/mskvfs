@@ -9,12 +9,19 @@ MinFS helps legacy applications use modern object stores with minimal config cha
 # Architecture
 ![architecture](https://raw.githubusercontent.com/minio/minfs/master/MinFS.svg?sanitize=true)
 
-### Run 
+## Run 
 ```
 export MINIO_ACCESS_KEY=minioadmin
 export MINIO_SECRET_KEY=minioadmin
 go build . && ./minfs http://localhost:9000/project-1 mnt
 ```
+
+## Changes
+- Run as user, not as root
+- Run as user process, not a daemon
+- Persistent file caching using MD5 checksum
+- Rescan directory for updates
+- Some spacing/style changes
 
 ## POSIX Compatibility
 > MinFS is not a POSIX conformant filesystem and it does not intend to be one. MinFS is built for legacy applications that needs to access an object store but does not expect strict POSIX compatibility. Please use MinFS if this fits your needs.
