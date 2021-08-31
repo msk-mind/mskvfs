@@ -19,7 +19,6 @@ import (
 	"context"
 	"io"
 	"os"
-
 	"bazil.org/fuse"
 
 	"github.com/minio/minfs/meta"

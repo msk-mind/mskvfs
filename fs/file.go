@@ -18,11 +18,11 @@ package minfs
 import (
 	"context"
 	"crypto/sha256"
-	"fmt"
 	"io"
 	"os"
-	"path"
 	"time"
+	"path"
+	
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -161,7 +161,6 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 		return nil
 	}
 
-	fmt.Println("Getting Object:", f.RemotePath())
 	object, err := f.mfs.api.GetObject(ctx, f.mfs.config.bucket, f.RemotePath(), minio.GetObjectOptions{})
 	if err != nil {
 		if meta.IsNoSuchObject(err) {
@@ -190,8 +189,6 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 
 // Generates a cache path based on the minio MD5 checksum
 func (f *File) cacheAllocate(ctx context.Context) (string, error) {
-	fmt.Println("Allocatting Object:", f.RemotePath())
-
 	object, err := f.mfs.api.StatObject(ctx, f.mfs.config.bucket, f.RemotePath(), minio.GetObjectOptions{})
 	if err != nil {
 		if meta.IsNoSuchObject(err) {
@@ -208,6 +205,8 @@ func (f *File) cacheAllocate(ctx context.Context) (string, error) {
 
 // Open return a file handle of the opened file
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+	resp.Flags |= fuse.OpenDirectIO
+
 	if err := f.dir.mfs.wait(f.Path); err != nil {
 		return nil, err
 	}
@@ -256,6 +255,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	// }
 
 	resp.Handle = fuse.HandleID(fh.handle)
+        
 	return fh, nil
 }
 
