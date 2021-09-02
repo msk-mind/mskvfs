@@ -16,6 +16,9 @@
 package minfs
 
 // Package cmd contains all the global variables and constants.
+
+// TODO: make this configurable
+// TODO: use existing file caching
 const (
 	globalDBDir   = "/gpfs/mskmindhdp_emc/tmp/db"
 	globalLogFile = "./log/minfs.log"

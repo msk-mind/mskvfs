@@ -357,22 +357,6 @@ func (mfs *MinFS) Release(fh *FileHandle) error {
 	return nil
 }
 
-// Release the file handle
-func (mfs *MinFS) CloseAllHandles() {
-	fmt.Println("Releasing all file Handles!")
-	for i := range mfs.handles {
-
-		fh := mfs.handles[i]
-
-		if fh != nil {
-			fmt.Println("Closing file")
-			fh.Close()
-			fmt.Println("Closed file!")
-
-		}
-	}
-}
-
 // NextSequence will return the next free iNode
 func (mfs *MinFS) NextSequence(tx *meta.Tx) (sequence uint64, err error) {
 	bucket := tx.Bucket("minio/")
