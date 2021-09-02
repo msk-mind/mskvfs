@@ -144,6 +144,8 @@ func (f *File) FullPath() string {
 // the incoming fuse request.
 func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest) error {
 
+	// TODO: This should block if another instance of this function is running for the same path
+
 	if _, err := os.Stat(path); err == nil {
 		return err
 	}
