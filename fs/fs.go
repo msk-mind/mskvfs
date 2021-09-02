@@ -89,7 +89,7 @@ func New(options ...func(*Config)) (*MinFS, error) {
 		uid:       0,
 		accessKey: ac.AccessKey,
 		secretKey: ac.SecretKey,
-		mode:      os.FileMode(0660),
+		mode:      os.FileMode(0440),
 	}
 
 	for _, optionFn := range options {
@@ -142,12 +142,15 @@ func (mfs *MinFS) Serve() (err error) {
 	defer c.Close()
 
 	// channel to receive errors
-	trapCh := signalTrap(os.Interrupt, syscall.SIGTERM, os.Kill)
+	trapChannel := signalTrap(os.Interrupt, syscall.SIGTERM, os.Kill)
 
 	go func() {
-		<-trapCh
+		<-trapChannel
+
+		fmt.Println("Intercepted trapChannel signal, attempting graceful shutdown")
 
 		mfs.shutdown()
+
 	}()
 
 	// Initialize database.
@@ -232,13 +235,18 @@ func (mfs *MinFS) Serve() (err error) {
 	}
 
 	<-c.Ready
+
+	fmt.Println("Mount process complete, ready to be done!")
 	return c.MountError
 }
 
 func (mfs *MinFS) shutdown() {
-	fuse.Unmount(mfs.config.mountpoint)
-	mfs.log.Println("MinFS stopped cleanly.")
-	fmt.Println("Stopped LunaFS gracefully, goodbye.")
+	fmt.Println("Shutting down")
+
+	if err := fuse.Unmount(mfs.config.mountpoint); err != nil {
+		fmt.Println("Some error (possibly ok) while umounting", mfs.config.mountpoint, err)
+	}
+
 }
 
 func (mfs *MinFS) sync(req interface{}) error {
@@ -347,6 +355,22 @@ func (mfs *MinFS) Release(fh *FileHandle) error {
 
 	mfs.handles[fh.handle] = nil
 	return nil
+}
+
+// Release the file handle
+func (mfs *MinFS) CloseAllHandles() {
+	fmt.Println("Releasing all file Handles!")
+	for i := range mfs.handles {
+
+		fh := mfs.handles[i]
+
+		if fh != nil {
+			fmt.Println("Closing file")
+			fh.Close()
+			fmt.Println("Closed file!")
+
+		}
+	}
 }
 
 // NextSequence will return the next free iNode

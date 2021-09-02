@@ -17,12 +17,11 @@ package minfs
 
 import (
 	"context"
-	"crypto/sha256"
+	"fmt"
 	"io"
 	"os"
-	"time"
 	"path"
-	
+	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
@@ -170,8 +169,8 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 	}
 	defer object.Close()
 
-	hasher := sha256.New()
-	size, err := io.Copy(file, io.TeeReader(object, hasher))
+	fmt.Println("Writing cache")
+	size, err := io.Copy(file, object) //io.TeeReader(object, hasher))
 
 	if err != nil {
 		return err
@@ -179,9 +178,6 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 
 	// update actual file size
 	f.Size = uint64(size)
-
-	// hash will be used when encrypting files
-	_ = hasher.Sum(nil)
 
 	// Success.
 	return nil
@@ -205,11 +201,16 @@ func (f *File) cacheAllocate(ctx context.Context) (string, error) {
 
 // Open return a file handle of the opened file
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+	fmt.Println("New OpenRequest")
+
 	resp.Flags |= fuse.OpenDirectIO
 
+	fmt.Println("Waiting for", f.Path)
 	if err := f.dir.mfs.wait(f.Path); err != nil {
+		fmt.Println("Wait failed!!!")
 		return nil, err
 	}
+	fmt.Println("...Done")
 
 	// // Start a writable transaction.
 	// tx, err := f.mfs.db.Begin(true)
@@ -219,25 +220,26 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	// defer tx.Rollback()
 
-	// cachePath, err := f.dir.mfs.NewCachePath()
-	// if err != nil {
-	// 	return nil, err
-	// }
-
 	cachePath, err := f.cacheAllocate(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	fmt.Println("...Done")
+
 	err = f.cacheSave(ctx, cachePath, req)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("...Done")
 
+	fmt.Println("Aquiring", f)
 	fh, err := f.mfs.Acquire(f)
 	if err != nil {
+		fmt.Println("Failed to aquire f!")
 		return nil, err
 	}
+	fmt.Println("...Done")
 
 	fh.cachePath = cachePath
 
@@ -255,7 +257,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	// }
 
 	resp.Handle = fuse.HandleID(fh.handle)
-        
+
 	return fh, nil
 }
 

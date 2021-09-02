@@ -1,0 +1,14 @@
+db
+cover.out
+./minfs
+*~
+*.test
+release
+experimental
+cache
+minfs
+coverage.txt
+**pdf
+**pprof
+**DS_Store
+log
