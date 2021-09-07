@@ -49,6 +49,7 @@ type KeyedMutex struct {
 	mutexes sync.Map // Zero value is empty and ready for use
 }
 
+// This lets us lock resources via a key (we'll use it to lock overlapping Open requests to prevent data-race condition between cacheAllocate and cacheSave)
 func (m *KeyedMutex) Lock(key string) func() {
 	value, _ := m.mutexes.LoadOrStore(key, &sync.Mutex{})
 	mtx := value.(*sync.Mutex)
