@@ -18,7 +18,6 @@ package minfs
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path"
 	"time"
@@ -150,36 +149,29 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 		return err
 	}
 
-	file, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-
-	defer file.Close()
-
 	if req.Flags&fuse.OpenTruncate == fuse.OpenTruncate {
 		f.Size = 0
 		return nil
 	}
 
-	object, err := f.mfs.api.GetObject(ctx, f.mfs.config.bucket, f.RemotePath(), minio.GetObjectOptions{})
+	// FGetObject faster, safer implimentation for large files
+	fmt.Println("FGetObject():", ctx, f.mfs.config.bucket, f.RemotePath(), path, minio.GetObjectOptions{})
+	err := f.mfs.api.FGetObject(ctx, f.mfs.config.bucket, f.RemotePath(), path, minio.GetObjectOptions{})
 	if err != nil {
 		if meta.IsNoSuchObject(err) {
 			return fuse.ENOENT
 		}
 		return err
 	}
-	defer object.Close()
 
-	fmt.Println("Writing cache")
-	size, err := io.Copy(file, object) //io.TeeReader(object, hasher))
+	cachedFile, err := os.Stat(path)
 
 	if err != nil {
 		return err
 	}
 
 	// update actual file size
-	f.Size = uint64(size)
+	f.Size = uint64(cachedFile.Size())
 
 	// Success.
 	return nil
@@ -188,6 +180,7 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 // Generates a cache path based on the minio MD5 checksum
 func (f *File) cacheAllocate(ctx context.Context) (string, error) {
 	object, err := f.mfs.api.StatObject(ctx, f.mfs.config.bucket, f.RemotePath(), minio.GetObjectOptions{})
+
 	if err != nil {
 		if meta.IsNoSuchObject(err) {
 			return "", fuse.ENOENT
@@ -203,45 +196,27 @@ func (f *File) cacheAllocate(ctx context.Context) (string, error) {
 
 // Open return a file handle of the opened file
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
-	fmt.Println("New OpenRequest")
 
 	resp.Flags |= fuse.OpenDirectIO
-
-	fmt.Println("Waiting for", f.Path)
-	if err := f.dir.mfs.wait(f.Path); err != nil {
-		fmt.Println("Wait failed!!!")
-		return nil, err
-	}
-	fmt.Println("...Done")
-
-	// // Start a writable transaction.
-	// tx, err := f.mfs.db.Begin(true)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	// defer tx.Rollback()
 
 	cachePath, err := f.cacheAllocate(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Println("...Done")
+	// Once we know the cache path, we lock it down until the Open request is fully served
+	unlock := f.mfs.km.Lock(cachePath)
+	defer unlock()
 
 	err = f.cacheSave(ctx, cachePath, req)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("...Done")
 
-	fmt.Println("Aquiring", f)
 	fh, err := f.mfs.Acquire(f)
 	if err != nil {
-		fmt.Println("Failed to aquire f!")
 		return nil, err
 	}
-	fmt.Println("...Done")
 
 	fh.cachePath = cachePath
 
@@ -249,14 +224,6 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	if err != nil {
 		return nil, err
 	}
-
-	// if err = f.store(tx); err != nil {
-	// 	return nil, err
-	// }
-
-	// if err = tx.Commit(); err != nil {
-	// 	return nil, err
-	// }
 
 	resp.Handle = fuse.HandleID(fh.handle)
 

@@ -16,10 +16,10 @@
 package minfs
 
 import (
-	"fmt"
 	"context"
 	"io"
 	"os"
+
 	"bazil.org/fuse"
 
 	"github.com/minio/minfs/meta"
@@ -43,7 +43,7 @@ type FileHandle struct {
 
 // Read from the file handle
 func (fh *FileHandle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	fmt.Println("Reading for",  fh.handle, fh.cachePath, req.Offset, req.Size)
+	// fmt.Println("Reading for", fh.handle, fh.cachePath, req.Offset, req.Size/1024, "kB")
 	buff := make([]byte, req.Size)
 	n, err := fh.File.ReadAt(buff, req.Offset)
 	if err != nil && err != io.EOF {
@@ -81,8 +81,6 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
 
 // Release the file handle
 func (fh *FileHandle) Release(ctx context.Context, req *fuse.ReleaseRequest) error {
-	fmt.Println("Releasing file handle!")
-
 	if err := fh.Close(); err != nil {
 		return err
 	}

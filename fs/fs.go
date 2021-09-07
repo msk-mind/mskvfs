@@ -44,6 +44,19 @@ var (
 	_ = meta.RegisterExt(2, Dir{})
 )
 
+// Keyed Mutex
+type KeyedMutex struct {
+	mutexes sync.Map // Zero value is empty and ready for use
+}
+
+func (m *KeyedMutex) Lock(key string) func() {
+	value, _ := m.mutexes.LoadOrStore(key, &sync.Mutex{})
+	mtx := value.(*sync.Mutex)
+	mtx.Lock()
+
+	return func() { mtx.Unlock() }
+}
+
 // MinFS contains the meta data for the MinFS client
 type MinFS struct {
 	config *Config
@@ -64,6 +77,8 @@ type MinFS struct {
 	syncChan chan interface{}
 
 	listenerDoneCh chan struct{}
+
+	km KeyedMutex
 }
 
 // New will return a new MinFS client
