@@ -27,7 +27,6 @@ func (mfs *MinFS) Unlock(path string) error {
 	defer mfs.m.Unlock()
 
 	delete(mfs.locks, path)
-
 	return nil
 }
 

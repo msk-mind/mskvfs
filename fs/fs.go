@@ -28,6 +28,7 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -71,7 +72,10 @@ type MinFS struct {
 	// contains all open handles
 	handles []*FileHandle
 
-	locks map[string]bool
+	fdcounter uint64
+
+	locks   map[string]bool
+	openfds map[uint64]string
 
 	m sync.Mutex
 
@@ -121,6 +125,7 @@ func New(options ...func(*Config)) (*MinFS, error) {
 		config:         cfg,
 		syncChan:       make(chan interface{}),
 		locks:          map[string]bool{},
+		openfds:        map[uint64]string{},
 		log:            log.New(logW, "MinFS ", log.Ldate|log.Ltime|log.Lshortfile),
 		listenerDoneCh: make(chan struct{}),
 	}
@@ -186,7 +191,6 @@ func (mfs *MinFS) Serve() (err error) {
 	}
 
 	mfs.log.Println("Initializing minio client...")
-
 	var (
 		host   = mfs.config.target.Host
 		access = mfs.config.accessKey
@@ -194,6 +198,8 @@ func (mfs *MinFS) Serve() (err error) {
 		token  = mfs.config.secretToken
 		secure = mfs.config.target.Scheme == "https"
 	)
+
+	go mfs.MonitorCache()
 
 	var transport http.RoundTripper = &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
@@ -347,29 +353,31 @@ func (mfs *MinFS) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fus
 	return nil
 }
 
-// Acquire will return a new FileHandle
+// Acquire will return a new FileHandle, adds to openfd map
 func (mfs *MinFS) Acquire(f *File) (*FileHandle, error) {
-	if err := mfs.Lock(f.FullPath()); err != nil {
-		return nil, err
-	}
 
-	h := &FileHandle{
+	fh := &FileHandle{
 		f: f,
 	}
 
-	mfs.handles = append(mfs.handles, h)
+	// Every new open request gets it's own ID
+	atomic.AddUint64(&mfs.fdcounter, 1)
+	fh.handle = mfs.fdcounter
 
-	h.handle = uint64(len(mfs.handles) - 1)
-	return h, nil
+	mfs.m.Lock()
+	defer mfs.m.Unlock()
+	mfs.openfds[fh.handle] = f.FullPath()
+
+	return fh, nil
 }
 
-// Release release the filehandle
+// Release release the filehandle, removes from openfd map
 func (mfs *MinFS) Release(fh *FileHandle) error {
-	if err := mfs.Unlock(fh.f.FullPath()); err != nil {
-		return err
-	}
 
-	mfs.handles[fh.handle] = nil
+	mfs.m.Lock()
+	defer mfs.m.Unlock()
+	delete(mfs.openfds, fh.handle)
+
 	return nil
 }
 

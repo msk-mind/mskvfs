@@ -189,7 +189,7 @@ func (f *File) cacheAllocate(ctx context.Context) (string, error) {
 	}
 
 	// Success.
-	cachePath := path.Join(f.mfs.config.cache, object.ETag+".fcache")
+	cachePath := path.Join(f.mfs.config.cache, object.Key+"-"+object.ETag+".fcache")
 
 	return cachePath, err
 }
