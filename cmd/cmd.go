@@ -87,9 +87,18 @@ func NewApp() *cli.App {
 			switch vals[0] {
 			case "cache":
 				if len(vals) == 1 {
-					return errors.New("Cache has no value")
+					return errors.New("Cache location has no value")
 				}
 				opts = append(opts, minfs.CacheDir(vals[1]))
+			case "quota":
+				if len(vals) == 1 {
+					return errors.New("Cache quota has no value")
+				}
+				quota, err := strconv.Atoi(vals[1])
+				if err != nil {
+					return errors.New("Cache quota invalid, only integer in GB")
+				}
+				opts = append(opts, minfs.CacheQuota(quota))
 			case "insecure":
 				opts = append(opts, minfs.Insecure())
 			case "debug":
@@ -144,11 +153,11 @@ func Main(app *cli.App, args []string) {
 	/*
 		switch os.Getenv("MINFS_PROFILER") {
 		case "cpu":
-			defer profile.Start(profile.CPUProfile, profile.ProfilePath(mustGetProfileDir())).Stop()
+			defer profile.Start(profile.CPUProfile, profile.ProfilePath("profile")).Stop()
 		case "mem":
-			defer profile.Start(profile.MemProfile, profile.ProfilePath(mustGetProfileDir())).Stop()
+			defer profile.Start(profile.MemProfile, profile.ProfilePath("profile")).Stop()
 		case "block":
-			defer profile.Start(profile.BlockProfile, profile.ProfilePath(mustGetProfileDir())).Stop()
+			defer profile.Start(profile.BlockProfile, profile.ProfilePath("profile")).Stop()
 		}
 	*/
 

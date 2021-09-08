@@ -218,6 +218,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	fh, err := f.mfs.Acquire(f, cachePath)
 	if err != nil {
+		fmt.Println("Some error with Acquire?")
 		return nil, err
 	}
 
@@ -225,6 +226,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	fh.File, err = os.OpenFile(fh.cachePath, int(req.Flags), f.mfs.config.mode)
 	if err != nil {
+		fmt.Println("Some error with OpenFile?")
 		return nil, err
 	}
 

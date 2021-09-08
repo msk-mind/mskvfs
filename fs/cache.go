@@ -31,6 +31,7 @@ type CacheItem struct {
 	ModTime time.Time
 }
 
+// Return cache items for cache directory
 func DirSize(path string) ([]CacheItem, float64, error) {
 	var totalSize float64
 	var items []CacheItem
@@ -56,28 +57,36 @@ func DirSize(path string) ([]CacheItem, float64, error) {
 	return items, totalSize, err
 }
 
+// Deletes cache items until size quota is satisified
 func (mfs *MinFS) DeleteUntilQuota(items []CacheItem, quota float64) {
 	for _, item := range items {
 		// Lock the cache resource until we are done deleting
 		unlock := mfs.km.Lock(item.Path)
-		defer unlock()
 
-		// Need to lock the map as we check.. since we've locked the cache resource, no new FDs can be created for this cache until we are done
+		// Need to lock the map as we check..
 		used := false
 		mfs.m.Lock()
+
+		// Search for open file handles that are using our cache resource
 		for _, cachePath := range mfs.openfds {
 			used = used || (cachePath == item.Path)
+			if used {
+				break
+			}
 		}
 		mfs.m.Unlock()
 
+		// Since we've locked the cache resource, no new FDs can be created for this resource until we are done
 		if !used {
-			quota -= item.Size
-			fmt.Println("DELETE:", item.Path)
 			os.Remove(item.Path)
+			quota -= item.Size
+			fmt.Println("DELETE:", item.Path, "Remaining quota:", quota)
 		} else {
 			fmt.Println("IN USE:", item.Path)
-
 		}
+
+		// This allows a new open request to re-create the cache resource and serve a new file handle
+		unlock()
 
 		if quota < 0 {
 			break
@@ -87,16 +96,17 @@ func (mfs *MinFS) DeleteUntilQuota(items []CacheItem, quota float64) {
 
 }
 
+// Go routine to monitor cache at regular intervals and preform cleanup as needed
 func (mfs *MinFS) MonitorCache() {
-	fmt.Println("Starting cache monitor!")
+	fmt.Println("Starting cache monitor: quota =", mfs.config.quota, "GB")
 	defer mfs.m.Unlock()
 
-	MAX_SIZE := float64(2)
+	MAX_SIZE := float64(mfs.config.quota)
 
 	for {
 		select {
 
-		case <-time.After(5 * time.Second):
+		case <-time.After(1 * time.Minute):
 			items, size, err := DirSize(mfs.config.cache)
 			if err != nil {
 				fmt.Println("Error in lstating cache directory...it's likely in flux:", err)

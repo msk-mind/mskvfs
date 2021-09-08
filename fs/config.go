@@ -29,6 +29,7 @@ type Config struct {
 	basePath string
 
 	cache       string
+	quota       int
 	accountID   string
 	accessKey   string
 	secretKey   string
@@ -53,61 +54,12 @@ type AccessConfig struct {
 
 // InitMinFSConfig - Initialize MinFS configuration file.
 func InitMinFSConfig() (*AccessConfig, error) {
-	// Create db directory.
-	if err := os.MkdirAll(globalDBDir, 0777); err != nil {
-		return nil, err
-	}
-
-	// // Config doesn't exist create it based on environment values.
-	// if _, err := os.Stat(globalConfigFile); err != nil {
-	// 	if os.IsNotExist(err) {
-	// 		log.Println("Initializing config.json for the first time, please update your access credentials.")
-	// ac := &AccessConfig{
-	// 	Version:     "1",
-	// 	AccessKey:   os.Getenv("MINFS_ACCESS_KEY"),
-	// 	SecretKey:   os.Getenv("MINFS_SECRET_KEY"),
-	// 	SecretToken: os.Getenv("MINFS_SECRET_TOKEN"),
-	// }
-	// 		acBytes, jerr := json.Marshal(ac)
-	// 		if jerr != nil {
-	// 			return nil, jerr
-	// 		}
-	// 		if err = ioutil.WriteFile(globalConfigFile, acBytes, 0666); err != nil {
-	// 			return nil, err
-	// 		}
-	// 		return ac, nil
-	// 	} // Exists but not accessible, fail.
-	// 	return nil, err
-	// } // Config exists, proceed to read.
-	// acBytes, err := ioutil.ReadFile(globalConfigFile)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// ac := &AccessConfig{}
-	// if err = json.Unmarshal(acBytes, ac); err != nil {
-	// 	return nil, err
-	// }
-
 	ac := &AccessConfig{
 		Version:     "1",
 		AccessKey:   os.Getenv("MINIO_ACCESS_KEY"),
 		SecretKey:   os.Getenv("MINIO_SECRET_KEY"),
 		SecretToken: os.Getenv("MINFS_SECRET_TOKEN"),
 	}
-
-	// // Override if access keys are set through env.
-	// accessKey := os.Getenv("MINFS_ACCESS_KEY")
-	// secretKey := os.Getenv("MINFS_SECRET_KEY")
-	// secretToken := os.Getenv("MINFS_SECRET_TOKEN")
-	// if accessKey != "" {
-	// 	ac.AccessKey = accessKey
-	// }
-	// if secretKey != "" {
-	// 	ac.SecretKey = secretKey
-	// }
-	// if secretToken != "" {
-	// 	ac.SecretToken = secretToken
-	// }
 
 	return ac, nil
 }
@@ -142,6 +94,13 @@ func Target(target string) func(*Config) {
 func CacheDir(path string) func(*Config) {
 	return func(cfg *Config) {
 		cfg.cache = path
+	}
+}
+
+// CacheDir - cache directory path option for Config
+func CacheQuota(size int) func(*Config) {
+	return func(cfg *Config) {
+		cfg.quota = size
 	}
 }
 

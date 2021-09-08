@@ -103,6 +103,7 @@ func New(options ...func(*Config)) (*MinFS, error) {
 	// Set defaults
 	cfg := &Config{
 		cache:     globalDBDir,
+		quota:     globalQuota,
 		basePath:  "",
 		accountID: fmt.Sprintf("%d", time.Now().UTC().Unix()),
 		gid:       0,
@@ -114,6 +115,11 @@ func New(options ...func(*Config)) (*MinFS, error) {
 
 	for _, optionFn := range options {
 		optionFn(cfg)
+	}
+
+	// Create db directory.
+	if err := os.MkdirAll(cfg.cache, 0777); err != nil {
+		return nil, err
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -364,7 +370,7 @@ func (mfs *MinFS) Acquire(f *File, resourceKey string) (*FileHandle, error) {
 	atomic.AddUint64(&mfs.fdcounter, 1)
 	fh.handle = mfs.fdcounter
 
-	fmt.Println("Serving FH request [", fh.handle, "], acquiring file lock on: ", f.FullPath(), " cache resource @", resourceKey)
+	// fmt.Println("Serving FH request [", fh.handle, "], acquiring file lock on: ", f.FullPath(), " cache resource @", resourceKey)
 
 	mfs.m.Lock()
 	defer mfs.m.Unlock()

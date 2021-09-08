@@ -21,5 +21,6 @@ package minfs
 // TODO: use existing file caching
 const (
 	globalDBDir   = "/tmp/db"
+	globalQuota   = 60
 	globalLogFile = "/var/log/minfs.log"
 )
