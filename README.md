@@ -29,8 +29,10 @@ docker run \
 - Run as user process, not a daemon
 - Persistent file caching using MD5 checksum
 - Rescan directory for updates
+- Allow for concurrent file reads
 - Some spacing/style changes
 - Keyed-mutex for concurrent open requests
+- (Threadsafe) rolling filecache with quota limits
 
 ## POSIX Compatibility
 > MinFS is not a POSIX conformant filesystem and it does not intend to be one. MinFS is built for legacy applications that needs to access an object store but does not expect strict POSIX compatibility. Please use MinFS if this fits your needs.
