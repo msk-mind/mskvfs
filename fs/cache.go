@@ -72,10 +72,10 @@ func (mfs *MinFS) DeleteUntilQuota(items []CacheItem, quota float64) {
 
 		if !used {
 			quota -= item.Size
-			// fmt.Println("DELETE:", item.Path)
+			fmt.Println("DELETE:", item.Path)
 			os.Remove(item.Path)
 		} else {
-			// fmt.Println("IN USE:", item.Path)
+			fmt.Println("IN USE:", item.Path)
 
 		}
 
@@ -91,12 +91,12 @@ func (mfs *MinFS) MonitorCache() {
 	fmt.Println("Starting cache monitor!")
 	defer mfs.m.Unlock()
 
-	MAX_SIZE := float64(0)
+	MAX_SIZE := float64(2)
 
 	for {
 		select {
 
-		case <-time.After(1000 * time.Millisecond):
+		case <-time.After(5 * time.Second):
 			items, size, err := DirSize(mfs.config.cache)
 			if err != nil {
 				fmt.Println("Error in lstating cache directory...it's likely in flux:", err)

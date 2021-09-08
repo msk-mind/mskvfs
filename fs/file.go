@@ -206,7 +206,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		return nil, err
 	}
 
-	// Once we know the cache path, we lock it down until the Open request is fully served
+	// Once we know the cache path (RESOURCE), we lock it down until the Open request is fully served
 	unlock := f.mfs.km.Lock(cachePath)
 	defer unlock()
 

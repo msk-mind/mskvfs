@@ -354,7 +354,7 @@ func (mfs *MinFS) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fus
 }
 
 // Acquire will return a new FileHandle, adds to openfd map
-func (mfs *MinFS) Acquire(f *File, cachePath string) (*FileHandle, error) {
+func (mfs *MinFS) Acquire(f *File, resourceKey string) (*FileHandle, error) {
 
 	fh := &FileHandle{
 		f: f,
@@ -364,11 +364,11 @@ func (mfs *MinFS) Acquire(f *File, cachePath string) (*FileHandle, error) {
 	atomic.AddUint64(&mfs.fdcounter, 1)
 	fh.handle = mfs.fdcounter
 
-	fmt.Println("Serving request [", fh.handle, "], acquiring file lock on: ", f.FullPath(), "cache resource @", cachePath)
+	fmt.Println("Serving FH request [", fh.handle, "], acquiring file lock on: ", f.FullPath(), " cache resource @", resourceKey)
 
 	mfs.m.Lock()
 	defer mfs.m.Unlock()
-	mfs.openfds[fh.handle] = cachePath
+	mfs.openfds[fh.handle] = resourceKey
 
 	return fh, nil
 }
