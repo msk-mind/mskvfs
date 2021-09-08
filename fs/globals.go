@@ -20,6 +20,6 @@ package minfs
 // TODO: make this configurable
 // TODO: use existing file caching
 const (
-	globalDBDir   = "/gpfs/mskmindhdp_emc/tmp/db"
-	globalLogFile = "./log/minfs.log"
+	globalDBDir   = "/tmp/db"
+	globalLogFile = "/var/log/minfs.log"
 )

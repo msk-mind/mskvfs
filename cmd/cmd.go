@@ -17,10 +17,10 @@
 package cmd
 
 import (
-	"os/user"
 	"errors"
 	"fmt"
 	"log"
+	"os/user"
 	"strconv"
 	"strings"
 
@@ -95,34 +95,32 @@ func NewApp() *cli.App {
 			case "debug":
 				opts = append(opts, minfs.Debug())
 			}
-
-			target := c.Args().Get(1)
-			mountpoint := c.Args().Get(0)
-
-			// Set permissions vs executing username
-			user, err := user.Current()
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Println("Hi " + user.Name + ", you're mounting lunafs as (uid: " + user.Uid + " gid: " + user.Gid + ")")
-
-			uidval, err := strconv.Atoi(user.Uid)
-			if err != nil {
-				return fmt.Errorf("Uid is not a valid value: %s", user.Uid)
-			}
-			opts = append(opts, minfs.SetUID(uint32(uidval)))
-
-
-			gidval, err := strconv.Atoi(user.Gid)
-			if err != nil {
-				return fmt.Errorf("Gid is not a valid value: %s", user.Gid)
-			}
-			opts = append(opts, minfs.SetGID(uint32(gidval)))
-
-
-			opts = append(opts, minfs.Mountpoint(mountpoint), minfs.Target(target))
 		}
+
+		target := c.Args().Get(1)
+		mountpoint := c.Args().Get(0)
+
+		// Set permissions vs executing username
+		user, err := user.Current()
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("Hi " + user.Name + ", you're mounting lunafs as (uid: " + user.Uid + " gid: " + user.Gid + ")")
+
+		uidval, err := strconv.Atoi(user.Uid)
+		if err != nil {
+			return fmt.Errorf("Uid is not a valid value: %s", user.Uid)
+		}
+		opts = append(opts, minfs.SetUID(uint32(uidval)))
+
+		gidval, err := strconv.Atoi(user.Gid)
+		if err != nil {
+			return fmt.Errorf("Gid is not a valid value: %s", user.Gid)
+		}
+		opts = append(opts, minfs.SetGID(uint32(gidval)))
+
+		opts = append(opts, minfs.Mountpoint(mountpoint), minfs.Target(target))
 
 		fs, err := minfs.New(opts...)
 		if err != nil {
