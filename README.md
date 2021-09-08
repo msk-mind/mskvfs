@@ -13,7 +13,7 @@ MinFS helps legacy applications use modern object stores with minimal config cha
 ```
 export MINIO_ACCESS_KEY=minioadmin
 export MINIO_SECRET_KEY=minioadmin
-go build . && ./minfs mnt http://localhost:9000/project-1
+go build . && ./minfs -o debug=true,cache=/gpfs/mskmindhdp_emc/tmp/db,quota=0 mnt http://localhost:9000/project-1
 ```
 ## Docker run:
 ```
