@@ -157,7 +157,7 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 	}
 
 	// FGetObject faster, safer implimentation for large files
-	fmt.Println("FGetObject():", ctx, f.mfs.config.bucket, f.RemotePath(), path, minio.GetObjectOptions{})
+	// fmt.Println("FGetObject():", ctx, f.mfs.config.bucket, f.RemotePath(), path, minio.GetObjectOptions{})
 	err := f.mfs.api.FGetObject(ctx, f.mfs.config.bucket, f.RemotePath(), path, minio.GetObjectOptions{})
 	if err != nil {
 		if meta.IsNoSuchObject(err) {
@@ -212,6 +212,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	err = f.cacheSave(ctx, cachePath, req)
 	if err != nil {
+		fmt.Println("Some error with cacheSave?")
 		return nil, err
 	}
 

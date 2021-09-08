@@ -21,7 +21,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -40,7 +39,7 @@ func DirSize(path string) ([]CacheItem, float64, error) {
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && strings.Contains(info.Name(), ".fcache") {
+		if !info.IsDir() && filepath.Ext(path) == ".fcache" {
 			sizeGB := float64(info.Size()) / math.Pow(1024.0, 3.0)
 
 			f := CacheItem{Path: path, Size: sizeGB, ModTime: info.ModTime()}
@@ -59,29 +58,31 @@ func DirSize(path string) ([]CacheItem, float64, error) {
 
 func (mfs *MinFS) DeleteUntilQuota(items []CacheItem, quota float64) {
 	for _, item := range items {
-		fmt.Println(item)
 		// Lock the cache resource until we are done deleting
 		unlock := mfs.km.Lock(item.Path)
+		defer unlock()
 
-		// Need to lock the map down for a second..
+		// Need to lock the map as we check.. since we've locked the cache resource, no new FDs can be created for this cache until we are done
 		used := false
 		mfs.m.Lock()
 		for _, cachePath := range mfs.openfds {
 			used = used || (cachePath == item.Path)
 		}
 		mfs.m.Unlock()
-		fmt.Println("Used:", used)
 
 		if !used {
 			quota -= item.Size
+			// fmt.Println("DELETE:", item.Path)
 			os.Remove(item.Path)
+		} else {
+			// fmt.Println("IN USE:", item.Path)
+
 		}
 
 		if quota < 0 {
 			break
 		}
 
-		unlock()
 	}
 
 }
@@ -95,22 +96,15 @@ func (mfs *MinFS) MonitorCache() {
 	for {
 		select {
 
-		case <-time.After(1 * time.Second):
+		case <-time.After(1000 * time.Millisecond):
 			items, size, err := DirSize(mfs.config.cache)
 			if err != nil {
-				fmt.Println("Error getting cache director...")
+				fmt.Println("Error in lstating cache directory...it's likely in flux:", err)
 			} else if size <= MAX_SIZE {
-				fmt.Println("Cache OK: Cache files:", len(items), "size:", size, "GB")
-				fmt.Println(items)
-
+				fmt.Println("Cache OK: Cache files:", len(items), "Size:", size, "GB Open Files:", len(mfs.openfds))
 			} else {
-				mfs.m.Lock()
-				fmt.Println("Cache CLEANUP: Cache files:", len(items), "size:", size, "GB", "open FDs:", len(mfs.openfds))
-				mfs.m.Unlock()
-
-				fmt.Println(mfs.openfds)
+				fmt.Println("Cache OVERLOAD: Cache files:", len(items), "Size:", size, "GB Open Files:", len(mfs.openfds))
 				mfs.DeleteUntilQuota(items, size-MAX_SIZE)
-
 			}
 
 		}
