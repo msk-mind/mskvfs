@@ -481,7 +481,7 @@ func (dir *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.
 	}
 
 	var fh *FileHandle
-	if fh, err = dir.mfs.Acquire(&f); err != nil {
+	if fh, err = dir.mfs.Acquire(&f, f.FullPath()); err != nil {
 		return nil, nil, err
 	}
 	fh.dirty = true

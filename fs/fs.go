@@ -53,6 +53,8 @@ type KeyedMutex struct {
 // This lets us lock resources via a key (we'll use it to lock overlapping Open requests to prevent data-race condition between cacheAllocate and cacheSave)
 func (m *KeyedMutex) Lock(key string) func() {
 	value, _ := m.mutexes.LoadOrStore(key, &sync.Mutex{})
+
+	fmt.Println("Locking:", key)
 	mtx := value.(*sync.Mutex)
 	mtx.Lock()
 
@@ -354,7 +356,7 @@ func (mfs *MinFS) Statfs(ctx context.Context, req *fuse.StatfsRequest, resp *fus
 }
 
 // Acquire will return a new FileHandle, adds to openfd map
-func (mfs *MinFS) Acquire(f *File) (*FileHandle, error) {
+func (mfs *MinFS) Acquire(f *File, cachePath string) (*FileHandle, error) {
 
 	fh := &FileHandle{
 		f: f,
@@ -366,7 +368,7 @@ func (mfs *MinFS) Acquire(f *File) (*FileHandle, error) {
 
 	mfs.m.Lock()
 	defer mfs.m.Unlock()
-	mfs.openfds[fh.handle] = f.FullPath()
+	mfs.openfds[fh.handle] = cachePath
 
 	return fh, nil
 }

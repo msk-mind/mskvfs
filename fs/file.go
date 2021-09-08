@@ -146,6 +146,8 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 	// TODO: This should block if another instance of this function is running for the same path
 
 	if _, err := os.Stat(path); err == nil {
+		currentTime := time.Now().Local()
+		err = os.Chtimes(path, currentTime, currentTime)
 		return err
 	}
 
@@ -213,7 +215,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		return nil, err
 	}
 
-	fh, err := f.mfs.Acquire(f)
+	fh, err := f.mfs.Acquire(f, cachePath)
 	if err != nil {
 		return nil, err
 	}
