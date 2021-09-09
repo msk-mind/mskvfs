@@ -43,7 +43,7 @@ type FileHandle struct {
 
 // Read from the file handle
 func (fh *FileHandle) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) error {
-	// fmt.Println("Reading for", fh.handle, fh.cachePath, req.Offset, req.Size/1024, "kB")
+	// mfs.log.Debug("Reading for", fh.handle, fh.cachePath, req.Offset, req.Size/1024, "kB")
 	buff := make([]byte, req.Size)
 	n, err := fh.File.ReadAt(buff, req.Offset)
 	if err != nil && err != io.EOF {
@@ -75,7 +75,7 @@ func (fh *FileHandle) Write(ctx context.Context, req *fuse.WriteRequest, resp *f
 
 // Fsync because of bug in fuse lib, this is on file. -- FIXME - needs more context (y4m4).
 func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) error {
-	// fmt.Println("fsync", f.FullPath())
+	// mfs.log.Debug("fsync", f.FullPath())
 	return nil
 }
 

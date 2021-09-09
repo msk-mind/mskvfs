@@ -72,17 +72,20 @@ type MinFS struct {
 	// contains all open handles
 	handles []*FileHandle
 
+	// Tracks fuse open requests
 	fdcounter uint64
 
 	locks   map[string]bool
 	openfds map[uint64]string
 
+	// Global openfd map lock
 	m sync.Mutex
 
 	syncChan chan interface{}
 
 	listenerDoneCh chan struct{}
 
+	// Keyed cache resource lock
 	km KeyedMutex
 }
 
@@ -141,6 +144,7 @@ func New(options ...func(*Config)) (*MinFS, error) {
 }
 
 func (mfs *MinFS) mount() (*fuse.Conn, error) {
+	mfs.log.Println("Mounting target...", mfs.config.mountpoint)
 	return fuse.Mount(
 		mfs.config.mountpoint,
 		fuse.FSName("LunaFS"),
@@ -158,7 +162,6 @@ func (mfs *MinFS) Serve() (err error) {
 
 	defer mfs.shutdown()
 
-	mfs.log.Println("Mounting target....")
 	// mount the drive
 	var c *fuse.Conn
 	c, err = mfs.mount()
@@ -174,21 +177,21 @@ func (mfs *MinFS) Serve() (err error) {
 	go func() {
 		<-trapChannel
 
-		fmt.Println("Intercepted trapChannel signal, attempting graceful shutdown")
+		mfs.log.Println("Intercepted trapChannel signal, attempting graceful shutdown")
 
 		mfs.shutdown()
 
 	}()
 
 	// Initialize database.
-	mfs.log.Println("Opening cache database...")
-	mfs.db, err = meta.Open(path.Join(mfs.config.cache, "cache.db"), 0600, nil)
+	mfs.log.Println("Opening cache database")
+	mfs.db, err = meta.Open(path.Join(mfs.config.cache, "meta", "cache.db"), 0600, nil)
 	if err != nil {
 		return err
 	}
 	defer mfs.db.Close()
 
-	mfs.log.Println("Initializing cache database...")
+	mfs.log.Println("Initializing cache database")
 	if err = mfs.db.Update(func(tx *meta.Tx) error {
 		_, berr := tx.CreateBucketIfNotExists([]byte("minio/"))
 		return berr
@@ -196,7 +199,7 @@ func (mfs *MinFS) Serve() (err error) {
 		return err
 	}
 
-	mfs.log.Println("Initializing minio client...")
+	mfs.log.Println("Initializing minio client:")
 	var (
 		host   = mfs.config.target.Host
 		access = mfs.config.accessKey
@@ -264,15 +267,15 @@ func (mfs *MinFS) Serve() (err error) {
 
 	<-c.Ready
 
-	fmt.Println("Mount process complete, ready to be done!")
+	fmt.Println("\nMount process complete, graceful shutdown")
 	return c.MountError
 }
 
 func (mfs *MinFS) shutdown() {
-	fmt.Println("Shutting down")
+	mfs.log.Println("Shutting down")
 
 	if err := fuse.Unmount(mfs.config.mountpoint); err != nil {
-		fmt.Println("Some error (possibly ok) while umounting", mfs.config.mountpoint, err)
+		mfs.log.Println("Some error (possibly ok) while umounting", mfs.config.mountpoint, err)
 	}
 
 }
@@ -370,7 +373,7 @@ func (mfs *MinFS) Acquire(f *File, resourceKey string) (*FileHandle, error) {
 	atomic.AddUint64(&mfs.fdcounter, 1)
 	fh.handle = mfs.fdcounter
 
-	// fmt.Println("Serving FH request [", fh.handle, "], acquiring file lock on: ", f.FullPath(), " cache resource @", resourceKey)
+	mfs.log.Println("Serving FH request [", fh.handle, "], acquiring file lock on: ", f.FullPath(), " cache resource @", resourceKey)
 
 	mfs.m.Lock()
 	defer mfs.m.Unlock()

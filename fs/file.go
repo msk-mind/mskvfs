@@ -17,7 +17,6 @@ package minfs
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path"
 	"time"
@@ -157,7 +156,7 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 	}
 
 	// FGetObject faster, safer implimentation for large files
-	// fmt.Println("FGetObject():", ctx, f.mfs.config.bucket, f.RemotePath(), path, minio.GetObjectOptions{})
+	// mfs.log.Println("FGetObject():", ctx, f.mfs.config.bucket, f.RemotePath(), path, minio.GetObjectOptions{})
 	err := f.mfs.api.FGetObject(ctx, f.mfs.config.bucket, f.RemotePath(), path, minio.GetObjectOptions{})
 	if err != nil {
 		if meta.IsNoSuchObject(err) {
@@ -212,13 +211,13 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	err = f.cacheSave(ctx, cachePath, req)
 	if err != nil {
-		fmt.Println("Some error with cacheSave?")
+		f.mfs.log.Println("Some error with cacheSave", err)
 		return nil, err
 	}
 
 	fh, err := f.mfs.Acquire(f, cachePath)
 	if err != nil {
-		fmt.Println("Some error with Acquire?")
+		f.mfs.log.Println("Some error with Acquire", err)
 		return nil, err
 	}
 
@@ -226,7 +225,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	fh.File, err = os.OpenFile(fh.cachePath, int(req.Flags), f.mfs.config.mode)
 	if err != nil {
-		fmt.Println("Some error with OpenFile?")
+		f.mfs.log.Println("Some error with OpenFile", err)
 		return nil, err
 	}
 

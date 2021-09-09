@@ -71,7 +71,7 @@ func (mfs *MinFS) DeleteUntilQuota(items []CacheItem, quota float64) {
 		for _, cachePath := range mfs.openfds {
 			used = used || (cachePath == item.Path)
 			if used {
-				break
+				break // Hold the map lock for as short as possible
 			}
 		}
 		mfs.m.Unlock()
@@ -80,9 +80,6 @@ func (mfs *MinFS) DeleteUntilQuota(items []CacheItem, quota float64) {
 		if !used {
 			os.Remove(item.Path)
 			quota -= item.Size
-			fmt.Println("DELETE:", item.Path, "Remaining quota:", quota)
-		} else {
-			fmt.Println("IN USE:", item.Path)
 		}
 
 		// This allows a new open request to re-create the cache resource and serve a new file handle
@@ -106,14 +103,14 @@ func (mfs *MinFS) MonitorCache() {
 	for {
 		select {
 
-		case <-time.After(1 * time.Minute):
+		case <-time.After(30 * time.Second):
 			items, size, err := DirSize(mfs.config.cache)
 			if err != nil {
-				fmt.Println("Error in lstating cache directory...it's likely in flux:", err)
+				mfs.log.Println("Error in lstating cache directory...it's likely in flux:", err)
 			} else if size <= MAX_SIZE {
-				fmt.Println("Cache OK: Cache files:", len(items), "Size:", size, "GB Open Files:", len(mfs.openfds))
+				mfs.log.Println("Cache OK: Cache files:", len(items), "Size:", size, "GB Open Files:", len(mfs.openfds))
 			} else {
-				fmt.Println("Cache OVERLOAD: Cache files:", len(items), "Size:", size, "GB Open Files:", len(mfs.openfds))
+				mfs.log.Println("Cache OVERLOAD: Cache files:", len(items), "Size:", size, "GB Open Files:", len(mfs.openfds))
 				mfs.DeleteUntilQuota(items, size-MAX_SIZE)
 			}
 
