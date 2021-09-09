@@ -96,7 +96,7 @@ func NewApp() *cli.App {
 				}
 				quota, err := strconv.Atoi(vals[1])
 				if err != nil {
-					return errors.New("Cache quota invalid, only integer in GB")
+					return errors.New("Cache quota invalid, pass only integer value in GB")
 				}
 				opts = append(opts, minfs.CacheQuota(quota))
 			case "insecure":
@@ -115,7 +115,7 @@ func NewApp() *cli.App {
 			panic(err)
 		}
 
-		fmt.Println("Hi " + user.Name + ", you're mounting lunafs as (uid: " + user.Uid + " gid: " + user.Gid + ")")
+		fmt.Println("Hi " + user.Username + ", you're mounting lunafs as (uid: " + user.Uid + " gid: " + user.Gid + ")")
 
 		uidval, err := strconv.Atoi(user.Uid)
 		if err != nil {

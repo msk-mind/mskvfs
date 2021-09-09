@@ -197,6 +197,7 @@ func (f *File) cacheAllocate(ctx context.Context) (string, error) {
 
 // Open return a file handle of the opened file
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+	start := time.Now()
 
 	resp.Flags |= fuse.OpenDirectIO
 
@@ -230,6 +231,8 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}
 
 	resp.Handle = fuse.HandleID(fh.handle)
+
+	f.mfs.log.Println("Serving FH request [", fh.handle, "], acquired file lock on: ", f.FullPath(), " cache resource @", cachePath, "took", time.Since(start))
 
 	return fh, nil
 }

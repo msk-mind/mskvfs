@@ -373,11 +373,9 @@ func (mfs *MinFS) Acquire(f *File, resourceKey string) (*FileHandle, error) {
 	atomic.AddUint64(&mfs.fdcounter, 1)
 	fh.handle = mfs.fdcounter
 
-	mfs.log.Println("Serving FH request [", fh.handle, "], acquiring file lock on: ", f.FullPath(), " cache resource @", resourceKey)
-
 	mfs.m.Lock()
-	defer mfs.m.Unlock()
 	mfs.openfds[fh.handle] = resourceKey
+	mfs.m.Unlock()
 
 	return fh, nil
 }
@@ -386,8 +384,8 @@ func (mfs *MinFS) Acquire(f *File, resourceKey string) (*FileHandle, error) {
 func (mfs *MinFS) Release(fh *FileHandle) error {
 
 	mfs.m.Lock()
-	defer mfs.m.Unlock()
 	delete(mfs.openfds, fh.handle)
+	mfs.m.Unlock()
 
 	return nil
 }
