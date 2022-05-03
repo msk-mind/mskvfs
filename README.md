@@ -2,7 +2,21 @@
 
 MinFS is a fuse driver for Amazon S3 compatible object storage server. MinFS lets you mount a remote bucket (from a S3 compatible object store), as if it were a local directory. This allows you to read and write from the remote bucket just by operating on the local mount directory.
 
-MinFS helps legacy applications use modern object stores with minimal config changes. MinFS uses [BoltDB](https://github.com/boltdb/bolt) for caching and saving metadata, list of files, permissions, owners etc.
+MinFS helps legacy applications use modern object stores with minimal config changes. 
+
+## Changes
+- Swap argument order
+- Allow running as any user, daemon or non-daemon
+- Persistent file caching using MD5 checksum
+- Rescan directory for updates
+- (Threadsafe) rolling filecache with quota limits
+- Allow for concurrent file reads with overlapping cache requests
+- Some spacing/style changes
+- Keyed-mutex for concurrent open requests
+
+## Notes
+
+MinFS uses [BoltDB](https://github.com/boltdb/bolt) for caching and saving metadata, list of files, permissions, owners etc.
 
 > Be careful, it is always possible to remove boltdb cache. Cache will be recreated by MinFS synchronizing metadata from the server.
 
@@ -23,16 +37,6 @@ docker run \
 	-e MINIO_ACCESS_KEY=minioadmin -e MINIO_SECRET_KEY=minioadmin \
 	minfs http://localhost:9000/project-1
 ```
-## Changes
-- Swap argument order
-- Run as user, not as root
-- Run as user process, not a daemon
-- Persistent file caching using MD5 checksum
-- Rescan directory for updates
-- Allow for concurrent file reads
-- Some spacing/style changes
-- Keyed-mutex for concurrent open requests
-- (Threadsafe) rolling filecache with quota limits
 
 ## POSIX Compatibility
 > MinFS is not a POSIX conformant filesystem and it does not intend to be one. MinFS is built for legacy applications that needs to access an object store but does not expect strict POSIX compatibility. Please use MinFS if this fits your needs.
