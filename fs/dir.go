@@ -425,13 +425,26 @@ func (dir *Dir) Lookup(ctx context.Context, name string, uid uint32) (node fs.No
 		}
 	}
 
-	fmt.Println(scanDirs)
+	var o interface{}
+	for idx := range scanDirs {
+		if scanDirs[idx].Path == name {
+			o = &(scanDirs[idx])
+		}
+	}
 
-	// for idx := range scanDirs {
-	// 	if scanDirs[idx].Path == name {
-	// 		return scanDirs[idx], err
-	// 	}
-	// }
+	fmt.Println("o=", o)
+
+	if file, ok := o.(File); ok {
+		fmt.Println("file=", file)
+		file.mfs = dir.mfs
+		file.dir = dir
+		return &file, nil
+	} else if subdir, ok := o.(Dir); ok {
+		fmt.Println("subdir=", subdir)
+		subdir.mfs = dir.mfs
+		subdir.dir = dir
+		return &subdir, nil
+	}
 
 	return nil, fuse.ENOENT
 }
