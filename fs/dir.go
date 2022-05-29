@@ -17,6 +17,7 @@ package minfs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -80,7 +81,10 @@ func (dir *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 // Lookup returns the file node, and scans the current dir if necessary
-func (dir *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
+func (dir *Dir) Lookup(ctx context.Context, name string, uid uint32) (fs.Node, error) {
+
+	fmt.Println("Lookup():", name)
+
 	if err := dir.scan(ctx); err != nil {
 		return nil, err
 	}
@@ -97,13 +101,16 @@ func (dir *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
 		return nil, err
 	}
 
+	// fmt.Println(o)
+	// fmt.Printf("t1: %T, %T\n", o, o.(Dir))
+
 	if file, ok := o.(File); ok {
-		file.mfs = dir.mfs
-		file.dir = dir
+		// file.mfs = dir.mfs
+		// file.dir = dir
 		return &file, nil
 	} else if subdir, ok := o.(Dir); ok {
-		subdir.mfs = dir.mfs
-		subdir.dir = dir
+		// subdir.mfs = dir.mfs
+		// subdir.dir = dir
 		return &subdir, nil
 	}
 
@@ -295,7 +302,7 @@ func (dir *Dir) scan(ctx context.Context) error {
 }
 
 // ReadDirAll will return all files in current dir
-func (dir *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+func (dir *Dir) ReadDirAll(ctx context.Context, uid uint32) ([]fuse.Dirent, error) {
 
 	// Referesh every ReadDir
 	dir.scanned = false
