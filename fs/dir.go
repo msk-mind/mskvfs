@@ -17,6 +17,7 @@ package minfs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -79,36 +80,38 @@ func (dir *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
-// Lookup returns the file node, and scans the current dir if necessary
-func (dir *Dir) Lookup(ctx context.Context, name string) (fs.Node, error) {
-	if err := dir.scan(ctx); err != nil {
-		return nil, err
-	}
+// // Lookup returns the file node, and scans the current dir if necessary
+// func (dir *Dir) Lookup(ctx context.Context, name string, uid uint32) (fs.Node, error) {
+// 	fmt.Println("Lookup:", dir.Path, name, uid)
 
-	// we are not statting each object here because of performance reasons
-	var o interface{} // meta.Object
-	if err := dir.mfs.db.View(func(tx *meta.Tx) error {
-		b := dir.bucket(tx)
-		return b.Get(name, &o)
-	}); err == nil {
-	} else if meta.IsNoSuchObject(err) {
-		return nil, fuse.ENOENT
-	} else if err != nil {
-		return nil, err
-	}
+// 	if err := dir.scanBucket(ctx, name, uid); err != nil {
+// 		return nil, err
+// 	}
 
-	if file, ok := o.(File); ok {
-		file.mfs = dir.mfs
-		file.dir = dir
-		return &file, nil
-	} else if subdir, ok := o.(Dir); ok {
-		subdir.mfs = dir.mfs
-		subdir.dir = dir
-		return &subdir, nil
-	}
+// 	// we are not statting each object here because of performance reasons
+// 	var o interface{} // meta.Object
+// 	if err := dir.mfs.db.View(func(tx *meta.Tx) error {
+// 		b := dir.bucket(tx)
+// 		return b.Get(name, &o)
+// 	}); err == nil {
+// 	} else if meta.IsNoSuchObject(err) {
+// 		return nil, fuse.ENOENT
+// 	} else if err != nil {
+// 		return nil, err
+// 	}
 
-	return nil, fuse.ENOENT
-}
+// 	if file, ok := o.(File); ok {
+// 		file.mfs = dir.mfs
+// 		file.dir = dir
+// 		return &file, nil
+// 	} else if subdir, ok := o.(Dir); ok {
+// 		subdir.mfs = dir.mfs
+// 		subdir.dir = dir
+// 		return &subdir, nil
+// 	}
+
+// 	return nil, fuse.ENOENT
+// }
 
 // RemotePath returns the full path including parent paths for current dir on the remote
 func (dir *Dir) RemotePath() string {
@@ -183,6 +186,36 @@ func (dir *Dir) storeFile(bucket *meta.Bucket, tx *meta.Tx, baseKey string, objI
 	return err
 }
 
+func (dir *Dir) storeBucket(bucket *meta.Bucket, tx *meta.Tx, baseKey string, objInfo minio.BucketInfo) error {
+	var d Dir
+	err := bucket.Get(baseKey, &d)
+	if err == nil {
+		// Prefix already exists and accessible, update values as needed.
+		d.dir = dir
+		d.mfs = dir.mfs
+	} else if meta.IsNoSuchObject(err) {
+		// Prefix not found allocate a new inode and create a new directory.
+		var seq uint64
+		seq, err = dir.mfs.NextSequence(tx)
+		if err != nil {
+			return err
+		}
+		d = Dir{
+			dir:   dir,
+			Path:  baseKey,
+			Inode: seq,
+			Mode:  0770 | os.ModeDir,
+			GID:   dir.mfs.config.gid,
+			UID:   dir.mfs.config.uid,
+		}
+		if err = d.store(tx); err != nil {
+			return err
+		}
+	} // else {
+	// For all other errors this operation fails.
+	return err
+}
+
 func (dir *Dir) storeDir(bucket *meta.Bucket, tx *meta.Tx, baseKey string, objInfo minio.ObjectInfo) error {
 	var d Dir
 	err := bucket.Get(baseKey, &d)
@@ -218,7 +251,50 @@ func (dir *Dir) storeDir(bucket *meta.Bucket, tx *meta.Tx, baseKey string, objIn
 	return err
 }
 
-func (dir *Dir) scan(ctx context.Context) error {
+func (dir *Dir) scanRoot(ctx context.Context, Uid uint32) (entries []Dir, err error) {
+	fmt.Println("scanRoot()")
+
+	prefix := dir.RemotePath()
+	if prefix != "" {
+		prefix = prefix + "/"
+	}
+
+	api, err := dir.mfs.getApi(Uid)
+	if err != nil {
+		return nil, err
+	}
+
+	ch, err := api.ListBuckets(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var seq uint64
+
+	for idx := range ch {
+
+		fmt.Println(ch[idx].Name)
+		key := ch[idx].Name
+
+		seq += 1
+
+		var d = Dir{
+			dir:   dir,
+			Path:  key,
+			Inode: seq,
+			Mode:  0770 | os.ModeDir,
+			GID:   dir.mfs.config.gid,
+			UID:   dir.mfs.config.uid,
+		}
+
+		entries = append(entries, d)
+	}
+
+	return entries, nil
+}
+
+func (dir *Dir) scanBucket(ctx context.Context, bucket string, uid uint32) error {
+	fmt.Println("scanBucket:", bucket)
 
 	if !dir.needsScan() {
 		return nil
@@ -250,14 +326,23 @@ func (dir *Dir) scan(ctx context.Context) error {
 		prefix = prefix + "/"
 	}
 
-	ch := dir.mfs.api.ListObjects(ctx, dir.mfs.config.bucket, minio.ListObjectsOptions{
+	api, err := dir.mfs.getApi(dir.UID)
+
+	ch := api.ListObjects(ctx, bucket, minio.ListObjectsOptions{
 		Prefix:    prefix,
 		Recursive: false,
 	})
 
+	fmt.Println("Objects:", uid)
+
+	// ch := dir.mfs.api.ListObjects(ctx, dir.mfs.config.bucket, minio.ListObjectsOptions{
+	// 	Prefix:    prefix,
+	// 	Recursive: false,
+	// })
+
 	for objInfo := range ch {
 		key := objInfo.Key[len(prefix):]
-		baseKey := path.Base(key)
+		baseKey := bucket + "/" + path.Base(key)
 
 		// object still exists
 		objects[baseKey] = nil
@@ -295,37 +380,60 @@ func (dir *Dir) scan(ctx context.Context) error {
 }
 
 // ReadDirAll will return all files in current dir
-func (dir *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
+func (dir *Dir) ReadDirAll(ctx context.Context, uid uint32) (entries []fuse.Dirent, err error) {
+	fmt.Println("ReadDirAll(), dir.Path =", dir.Path, ",uid =", uid)
 
-	// Referesh every ReadDir
-	dir.scanned = false
+	var scanDirs = []Dir{}
 
-	if err := dir.scan(ctx); err != nil {
-		return nil, err
+	switch dir.Path {
+	case "":
+		scanDirs, err = dir.scanRoot(ctx, uid)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		if err = dir.scanBucket(ctx, dir.Path, uid); err != nil {
+			return nil, err
+		}
 	}
 
-	var entries = []fuse.Dirent{}
-
-	// update cache folder with bucket list
-	if err := dir.mfs.db.View(func(tx *meta.Tx) error {
-		return dir.bucket(tx).ForEach(func(k string, o interface{}) error {
-			if file, ok := o.(File); ok {
-				file.dir = dir
-				entries = append(entries, file.Dirent())
-			} else if subdir, ok := o.(Dir); ok {
-				subdir.dir = dir
-				entries = append(entries, subdir.Dirent())
-			} else {
-				panic("Could not find type. Try to remove cache.")
-			}
-
-			return nil
-		})
-	}); err != nil {
-		return nil, err
+	for _, x := range scanDirs {
+		entries = append(entries, x.Dirent())
 	}
+
+	fmt.Println("Completed ReadDirAll:", entries)
 
 	return entries, nil
+
+}
+
+// Lookup returns the file node, and scans the current dir if necessary
+func (dir *Dir) Lookup(ctx context.Context, name string, uid uint32) (node fs.Node, err error) {
+	fmt.Println("Lookup():, dir.Path =", dir.Path, ", name =", name, ", uid = ", uid)
+
+	var scanDirs = []Dir{}
+
+	switch dir.Path {
+	case "":
+		scanDirs, err = dir.scanRoot(ctx, uid)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		if err = dir.scanBucket(ctx, dir.Path, uid); err != nil {
+			return nil, err
+		}
+	}
+
+	fmt.Println(scanDirs)
+
+	// for idx := range scanDirs {
+	// 	if scanDirs[idx].Path == name {
+	// 		return scanDirs[idx], err
+	// 	}
+	// }
+
+	return nil, fuse.ENOENT
 }
 
 func (dir *Dir) bucket(tx *meta.Tx) *meta.Bucket {
