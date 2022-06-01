@@ -252,7 +252,7 @@ func (dir *Dir) storeDir(bucket *meta.Bucket, tx *meta.Tx, baseKey string, objIn
 }
 
 func (dir *Dir) scanRoot(ctx context.Context, Uid uint32) (entries []Dir, err error) {
-	fmt.Println("scanRoot()")
+	fmt.Println(" +- scanRoot()")
 
 	prefix := dir.RemotePath()
 	if prefix != "" {
@@ -291,10 +291,13 @@ func (dir *Dir) scanRoot(ctx context.Context, Uid uint32) (entries []Dir, err er
 	return entries, nil
 }
 
-func (dir *Dir) scanBucket(ctx context.Context, bucket string, uid uint32) (entries []Dir, err error) {
-	fmt.Println("scanBucket():", bucket)
+func (dir *Dir) scanBucket(ctx context.Context, uid uint32) (entries []Dir, err error) {
 
-	prefix := strings.Replace(dir.RemotePath(), bucket, "", 1)
+	bucket := strings.Split(dir.RemotePath(), "/")[0] // Bucket will always be given as first part of remote path
+
+	prefix := strings.Replace(dir.RemotePath()+"/", bucket+"/", "", 1) // We need prefix paths to end in / if they aren't empty
+
+	fmt.Println(" +- scanBucket():", dir.RemotePath(), ", bucket=", bucket, ",prefix=", prefix)
 
 	api, err := dir.mfs.getApi(uid)
 	if err != nil {
@@ -310,11 +313,12 @@ func (dir *Dir) scanBucket(ctx context.Context, bucket string, uid uint32) (entr
 
 	for objInfo := range ch {
 		key := objInfo.Key[len(prefix):]
-		fmt.Println("Found:", key, objInfo)
 
 		seq += 1
 
-		path := bucket + "/" + path.Base(key)
+		path := path.Base(key)
+
+		fmt.Println(" +- Found Object:", "Key:", objInfo.Key, "Used key:", key, "path:", path)
 
 		// object still exists
 
@@ -341,7 +345,7 @@ func (dir *Dir) scanBucket(ctx context.Context, bucket string, uid uint32) (entr
 
 // ReadDirAll will return all files in current dir
 func (dir *Dir) ReadDirAll(ctx context.Context, uid uint32) (entries []fuse.Dirent, err error) {
-	fmt.Println("ReadDirAll(), dir.Path =", dir.Path, ",uid =", uid)
+	fmt.Println("ReadDirAll(), dir.RemotePath =", dir.RemotePath(), ",uid =", uid)
 
 	var scanDirs = []Dir{}
 
@@ -352,7 +356,7 @@ func (dir *Dir) ReadDirAll(ctx context.Context, uid uint32) (entries []fuse.Dire
 			return nil, err
 		}
 	default:
-		scanDirs, err = dir.scanBucket(ctx, dir.Path, uid)
+		scanDirs, err = dir.scanBucket(ctx, uid)
 		if err != nil {
 			return nil, err
 		}
@@ -381,11 +385,13 @@ func (dir *Dir) Lookup(ctx context.Context, name string, uid uint32) (node fs.No
 			return nil, err
 		}
 	default:
-		scanDirs, err = dir.scanBucket(ctx, dir.Path, uid)
+		scanDirs, err = dir.scanBucket(ctx, uid)
 		if err != nil {
 			return nil, err
 		}
 	}
+
+	fmt.Println("Completed scan:", scanDirs)
 
 	// I Have zero clue what this interface business is,
 	var o interface{} // Okay i like it, Picasso
