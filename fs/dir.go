@@ -303,7 +303,7 @@ func (dir *Dir) scan(ctx context.Context) error {
 
 // ReadDirAll will return all files in current dir
 func (dir *Dir) ReadDirAll(ctx context.Context, uid uint32) ([]fuse.Dirent, error) {
-
+	fmt.Println("ReadDirAll()")
 	// Referesh every ReadDir
 	dir.scanned = false
 
