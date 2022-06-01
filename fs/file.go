@@ -17,6 +17,7 @@ package minfs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path"
 	"time"
@@ -59,6 +60,7 @@ type File struct {
 
 func (f *File) store(tx *meta.Tx) error {
 	b := f.bucket(tx)
+	fmt.Printf("Storing %v at %s as %T\n", f, path.Base(f.Path), f)
 	return b.Put(path.Base(f.Path), f)
 }
 

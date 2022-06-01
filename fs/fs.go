@@ -155,8 +155,6 @@ func (mfs *MinFS) mount() (*fuse.Conn, error) {
 
 func (mfs *MinFS) getApi(uid uint32) (api *minio.Client, err error) {
 
-	fmt.Println("getApi() called with", uid)
-
 	var (
 		host   = mfs.config.target.Host
 		access = mfs.config.accessKey

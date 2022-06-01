@@ -273,9 +273,7 @@ func (dir *Dir) scanRoot(ctx context.Context, Uid uint32) (entries []Dir, err er
 
 	for idx := range ch {
 
-		fmt.Println(ch[idx].Name)
 		key := ch[idx].Name
-
 		seq += 1
 
 		var d = Dir{
@@ -293,90 +291,52 @@ func (dir *Dir) scanRoot(ctx context.Context, Uid uint32) (entries []Dir, err er
 	return entries, nil
 }
 
-func (dir *Dir) scanBucket(ctx context.Context, bucket string, uid uint32) error {
-	fmt.Println("scanBucket:", bucket)
+func (dir *Dir) scanBucket(ctx context.Context, bucket string, uid uint32) (entries []Dir, err error) {
+	fmt.Println("scanBucket():", bucket)
 
-	if !dir.needsScan() {
-		return nil
-	}
+	prefix := strings.Replace(dir.RemotePath(), bucket, "", 1)
 
-	tx, err := dir.mfs.db.Begin(true)
+	api, err := dir.mfs.getApi(uid)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	defer tx.Rollback()
-
-	b := dir.bucket(tx)
-
-	objects := map[string]interface{}{}
-
-	// we'll compare the current bucket contents against our cache folder, and update the cache
-	if err := b.ForEach(func(k string, o interface{}) error {
-		if k[len(k)-1] != '/' {
-			objects[k] = &o
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	prefix := dir.RemotePath()
-	if prefix != "" {
-		prefix = prefix + "/"
-	}
-
-	api, err := dir.mfs.getApi(dir.UID)
 
 	ch := api.ListObjects(ctx, bucket, minio.ListObjectsOptions{
 		Prefix:    prefix,
 		Recursive: false,
 	})
 
-	fmt.Println("Objects:", uid)
-
-	// ch := dir.mfs.api.ListObjects(ctx, dir.mfs.config.bucket, minio.ListObjectsOptions{
-	// 	Prefix:    prefix,
-	// 	Recursive: false,
-	// })
+	var seq uint64
 
 	for objInfo := range ch {
 		key := objInfo.Key[len(prefix):]
-		baseKey := bucket + "/" + path.Base(key)
+		fmt.Println("Found:", key, objInfo)
+
+		seq += 1
+
+		path := bucket + "/" + path.Base(key)
 
 		// object still exists
-		objects[baseKey] = nil
 
 		if strings.HasSuffix(key, "/") {
-			dir.storeDir(b, tx, baseKey, objInfo)
-		} else {
-			dir.storeFile(b, tx, baseKey, objInfo)
+			var d = Dir{
+				dir:   dir,
+				Path:  path,
+				Inode: seq,
+				Mode:  0770 | os.ModeDir,
+				GID:   dir.mfs.config.gid,
+				UID:   dir.mfs.config.uid,
+			}
+
+			entries = append(entries, d)
 		}
+		// 	dir.storeDir(b, tx, baseKey, objInfo)
+		// } else {
+		// 	dir.storeFile(b, tx, baseKey, objInfo)
+		// }
 	}
 
-	// cache housekeeping
-	for k, o := range objects {
-		if o == nil {
-			continue
-		}
-
-		// purge from cache
-		b.Delete(k)
-
-		if _, ok := o.(Dir); !ok {
-			continue
-		}
-
-		b.DeleteBucket(k + "/")
-	}
-
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-
-	dir.scanned = true
-
-	return nil
+	return entries, nil
 }
 
 // ReadDirAll will return all files in current dir
@@ -392,7 +352,8 @@ func (dir *Dir) ReadDirAll(ctx context.Context, uid uint32) (entries []fuse.Dire
 			return nil, err
 		}
 	default:
-		if err = dir.scanBucket(ctx, dir.Path, uid); err != nil {
+		scanDirs, err = dir.scanBucket(ctx, dir.Path, uid)
+		if err != nil {
 			return nil, err
 		}
 	}
@@ -420,19 +381,19 @@ func (dir *Dir) Lookup(ctx context.Context, name string, uid uint32) (node fs.No
 			return nil, err
 		}
 	default:
-		if err = dir.scanBucket(ctx, dir.Path, uid); err != nil {
+		scanDirs, err = dir.scanBucket(ctx, dir.Path, uid)
+		if err != nil {
 			return nil, err
 		}
 	}
 
-	var o interface{}
+	// I Have zero clue what this interface business is,
+	var o interface{} // Okay i like it, Picasso
 	for idx := range scanDirs {
 		if scanDirs[idx].Path == name {
-			o = &(scanDirs[idx])
+			o = (scanDirs[idx])
 		}
 	}
-
-	fmt.Println("o=", o)
 
 	if file, ok := o.(File); ok {
 		fmt.Println("file=", file)
@@ -541,6 +502,7 @@ func (dir *Dir) store(tx *meta.Tx) error {
 	if _, err := b.CreateBucketIfNotExists(subbucketPath + "/"); err != nil {
 		return err
 	}
+	fmt.Printf("Storing %v at %s as %T\n", dir, subbucketPath, dir)
 
 	return b.Put(subbucketPath, dir)
 }
