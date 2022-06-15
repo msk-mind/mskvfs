@@ -19,13 +19,10 @@ import (
 	"errors"
 	"net/url"
 	"os"
-	"path"
-	"strings"
 )
 
 // Config is being used for storge of configuration items
 type Config struct {
-	bucket   string
 	basePath string
 
 	cache       string
@@ -76,16 +73,6 @@ func Target(target string) func(*Config) {
 	return func(cfg *Config) {
 		if u, err := url.Parse(target); err == nil {
 			cfg.target = u
-
-			if len(u.Path) > 1 {
-				parts := strings.Split(u.Path[1:], "/")
-				if len(parts) >= 0 {
-					cfg.bucket = parts[0]
-				}
-				if len(parts) >= 1 {
-					cfg.basePath = path.Join(parts[1:]...)
-				}
-			}
 		}
 	}
 }
@@ -141,10 +128,6 @@ func (cfg *Config) validate() error {
 
 	if cfg.target == nil {
 		return errors.New("Target not set")
-	}
-
-	if cfg.bucket == "" {
-		return errors.New("Bucket not set")
 	}
 
 	return nil

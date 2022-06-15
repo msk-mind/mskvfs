@@ -17,8 +17,10 @@ package minfs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"bazil.org/fuse"
@@ -59,6 +61,7 @@ type File struct {
 
 func (f *File) store(tx *meta.Tx) error {
 	b := f.bucket(tx)
+	fmt.Printf("Storing %v at %s as %T\n", f, path.Base(f.Path), f)
 	return b.Put(path.Base(f.Path), f)
 }
 
@@ -128,19 +131,22 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	})
 }
 
-// RemotePath will return the full path on bucket
-func (f *File) RemotePath() string {
-	return path.Join(f.dir.RemotePath(), f.Path)
-}
-
 // FullPath will return the full path
 func (f *File) FullPath() string {
 	return path.Join(f.dir.FullPath(), f.Path)
 }
 
+func (f *File) ObjectPath() string {
+	return strings.Replace(f.FullPath(), f.Bucket()+"/", "", 1)
+}
+
+func (f *File) Bucket() string {
+	return strings.Split(f.FullPath(), "/")[0] // Bucket will always be given as first part of remote path
+}
+
 // Saves a new file at cached path and fetches the object based on
 // the incoming fuse request.
-func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest) error {
+func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest, api *minio.Client) error {
 
 	// TODO: This should block if another instance of this function is running for the same path
 
@@ -157,7 +163,7 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 
 	// FGetObject faster, safer implimentation for large files
 	// mfs.log.Println("FGetObject():", ctx, f.mfs.config.bucket, f.RemotePath(), path, minio.GetObjectOptions{})
-	err := f.mfs.api.FGetObject(ctx, f.mfs.config.bucket, f.RemotePath(), path, minio.GetObjectOptions{})
+	err := api.FGetObject(ctx, f.Bucket(), f.ObjectPath(), path, minio.GetObjectOptions{})
 	if err != nil {
 		if meta.IsNoSuchObject(err) {
 			return fuse.ENOENT
@@ -179,8 +185,9 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 }
 
 // Generates a cache path based on the minio MD5 checksum
-func (f *File) cacheAllocate(ctx context.Context) (string, error) {
-	object, err := f.mfs.api.StatObject(ctx, f.mfs.config.bucket, f.RemotePath(), minio.GetObjectOptions{})
+func (f *File) cacheAllocate(ctx context.Context, api *minio.Client) (string, error) {
+
+	object, err := api.StatObject(ctx, f.Bucket(), f.ObjectPath(), minio.GetObjectOptions{})
 
 	if err != nil {
 		if meta.IsNoSuchObject(err) {
@@ -197,12 +204,20 @@ func (f *File) cacheAllocate(ctx context.Context) (string, error) {
 
 // Open return a file handle of the opened file
 func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (fs.Handle, error) {
+
 	start := time.Now()
 
 	resp.Flags |= fuse.OpenDirectIO
 
-	cachePath, err := f.cacheAllocate(ctx)
+	api, err := f.mfs.getApi(req.Uid)
 	if err != nil {
+		fmt.Println("Some error with getApi()")
+		return nil, err
+	}
+
+	cachePath, err := f.cacheAllocate(ctx, api)
+	if err != nil {
+		fmt.Println("Some error with cacheAllocate()")
 		return nil, err
 	}
 
@@ -210,7 +225,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	unlock := f.mfs.km.Lock(cachePath)
 	defer unlock()
 
-	err = f.cacheSave(ctx, cachePath, req)
+	err = f.cacheSave(ctx, cachePath, req, api)
 	if err != nil {
 		f.mfs.log.Println("Some error with cacheSave", err)
 		return nil, err
@@ -261,10 +276,15 @@ func (f *File) Getattr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse
 }
 
 // Dirent returns the File object as a fuse.Dirent
-func (f *File) Dirent() fuse.Dirent {
+func (f File) Dirent() fuse.Dirent {
 	return fuse.Dirent{
 		Inode: f.Inode, Name: f.Path, Type: fuse.DT_File,
 	}
+}
+
+// Dirent will return the fuse Dirent for current dir
+func (f File) Dirpath() string {
+	return f.Path
 }
 
 func (f *File) delete(tx *meta.Tx) error {

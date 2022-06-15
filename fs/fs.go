@@ -21,12 +21,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
-	"mime"
 	"net"
 	"net/http"
 	"os"
 	"path"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -113,7 +111,7 @@ func New(options ...func(*Config)) (*MinFS, error) {
 		uid:       0,
 		accessKey: ac.AccessKey,
 		secretKey: ac.SecretKey,
-		mode:      os.FileMode(0440),
+		mode:      os.FileMode(0444),
 	}
 
 	for _, optionFn := range options {
@@ -147,9 +145,54 @@ func (mfs *MinFS) mount() (*fuse.Conn, error) {
 	mfs.log.Println("Mounting target...", mfs.config.mountpoint)
 	return fuse.Mount(
 		mfs.config.mountpoint,
-		fuse.FSName("LunaFS"),
-		fuse.Subtype("LunaFS"),
+		fuse.FSName("mskvfs"),
+		fuse.Subtype("mskvfs"),
+		fuse.AllowOther(),
 	)
+}
+
+func (mfs *MinFS) getApi(uid uint32) (api *minio.Client, err error) {
+
+	var (
+		host   = mfs.config.target.Host
+		access = mfs.config.accessKey
+		secret = mfs.config.secretKey
+		token  = mfs.config.secretToken
+		secure = mfs.config.target.Scheme == "https"
+	)
+
+	var transport http.RoundTripper = &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: mfs.config.insecure,
+		},
+		// Set this value so that the underlying transport round-tripper
+		// doesn't try to auto decode the body of objects with
+		// content-encoding set to `gzip`.
+		//
+		// Refer:
+		//    https://golang.org/src/net/http/transport.go?h=roundTrip#L1843
+		DisableCompression: true,
+	}
+
+	creds := credentials.NewStaticV4(access, secret, token)
+	options := &minio.Options{
+		Creds:     creds,
+		Secure:    secure,
+		Transport: transport,
+	}
+
+	api, err = minio.New(host, options)
+
+	return api, err
 }
 
 // Serve starts the MinFS client
@@ -244,16 +287,6 @@ func (mfs *MinFS) Serve() (err error) {
 		return err
 	}
 
-	// Validate if the bucket is valid and accessible.
-	exists, err := mfs.api.BucketExists(context.Background(), mfs.config.bucket)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		mfs.log.Println("Bucket doesn't not exist... aborting")
-		return os.ErrNotExist
-	}
-
 	if err = mfs.startSync(); err != nil {
 		return err
 	}
@@ -286,52 +319,15 @@ func (mfs *MinFS) sync(req interface{}) error {
 }
 
 func (mfs *MinFS) moveOp(req *MoveOperation) {
-	dst := minio.CopyDestOptions{
-		Bucket: mfs.config.bucket,
-		Object: req.Target,
-	}
-	src := minio.CopySrcOptions{
-		Bucket: mfs.config.bucket,
-		Object: req.Source,
-	}
-	if _, err := mfs.api.CopyObject(context.Background(), dst, src); err != nil {
-		req.Error <- err
-		return
-	}
-	req.Error <- mfs.api.RemoveObject(context.Background(), mfs.config.bucket, req.Source, minio.RemoveObjectOptions{})
+	fmt.Println("moveOp() removed")
 }
 
 func (mfs *MinFS) copyOp(req *CopyOperation) {
-	dst := minio.CopyDestOptions{
-		Bucket: mfs.config.bucket,
-		Object: req.Target,
-	}
-	src := minio.CopySrcOptions{
-		Bucket: mfs.config.bucket,
-		Object: req.Source,
-	}
-	_, err := mfs.api.CopyObject(context.Background(), dst, src)
-	req.Error <- err
+	fmt.Println("copyOp() removed")
 }
 
 func (mfs *MinFS) putOp(req *PutOperation) {
-	r, err := os.Open(req.Source)
-	if err != nil {
-		req.Error <- err
-		return
-	}
-	defer r.Close()
-
-	ops := minio.PutObjectOptions{
-		ContentType: mime.TypeByExtension(filepath.Ext(req.Target)),
-	}
-	_, err = mfs.api.PutObject(context.Background(), mfs.config.bucket, req.Target, r, req.Length, ops)
-	if err != nil {
-		req.Error <- err
-		return
-	}
-	mfs.log.Printf("Upload finished: %s -> %s.\n", req.Source, req.Target)
-	req.Error <- nil
+	fmt.Println("putOp() removed")
 }
 
 func (mfs *MinFS) startSync() error {
