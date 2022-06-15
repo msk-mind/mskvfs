@@ -30,6 +30,11 @@ import (
 	minio "github.com/minio/minio-go/v7"
 )
 
+type FilesystemElement interface {
+	Dirpath() string
+	Dirent() fuse.Dirent
+}
+
 // Dir implements both Node and Handle for the root directory.
 type Dir struct {
 	mfs *MinFS
@@ -56,10 +61,6 @@ type Dir struct {
 	Flags    uint32 // see chflags(2)
 
 	scanned bool
-}
-
-func (dir *Dir) needsScan() bool {
-	return !dir.scanned
 }
 
 // Attr returns the attributes for the directory
@@ -103,122 +104,19 @@ func (dir *Dir) FullPath() string {
 	return fullPath
 }
 
-func (dir *Dir) storeFile(bucket *meta.Bucket, tx *meta.Tx, baseKey string, objInfo minio.ObjectInfo) error {
-	var f File
-	err := bucket.Get(baseKey, &f)
-	if err == nil {
-		// Object already exists and accessible, update values as needed.
-		f.dir = dir
-		f.mfs = dir.mfs
-		f.Size = uint64(objInfo.Size)
-		f.ETag = objInfo.ETag
-		if objInfo.LastModified.After(f.Chgtime) {
-			f.Chgtime = objInfo.LastModified
-		}
-		if objInfo.LastModified.After(f.Crtime) {
-			f.Crtime = objInfo.LastModified
-		}
-		if objInfo.LastModified.After(f.Mtime) {
-			f.Mtime = objInfo.LastModified
-		}
-		if objInfo.LastModified.After(f.Atime) {
-			f.Atime = objInfo.LastModified
-		}
-	} else if meta.IsNoSuchObject(err) {
-		// Object not found, allocate a new inode.
-		var seq uint64
-		seq, err = dir.mfs.NextSequence(tx)
-		if err != nil {
-			return err
-		}
-		f = File{
-			dir:     dir,
-			Path:    baseKey,
-			Size:    uint64(objInfo.Size),
-			Inode:   seq,
-			Mode:    dir.mfs.config.mode,
-			GID:     dir.mfs.config.gid,
-			UID:     dir.mfs.config.uid,
-			Chgtime: objInfo.LastModified,
-			Crtime:  objInfo.LastModified,
-			Mtime:   objInfo.LastModified,
-			Atime:   objInfo.LastModified,
-			ETag:    objInfo.ETag,
-		}
-		if err = f.store(tx); err != nil {
-			return err
-		}
-	} // else {
-	// Returns failure for all other errors.
-	return err
+// Dirent will return the fuse Dirent for current dir
+func (dir Dir) Dirent() fuse.Dirent {
+	return fuse.Dirent{
+		Inode: dir.Inode, Name: dir.Path, Type: fuse.DT_Dir,
+	}
 }
 
-func (dir *Dir) storeBucket(bucket *meta.Bucket, tx *meta.Tx, baseKey string, objInfo minio.BucketInfo) error {
-	var d Dir
-	err := bucket.Get(baseKey, &d)
-	if err == nil {
-		// Prefix already exists and accessible, update values as needed.
-		d.dir = dir
-		d.mfs = dir.mfs
-	} else if meta.IsNoSuchObject(err) {
-		// Prefix not found allocate a new inode and create a new directory.
-		var seq uint64
-		seq, err = dir.mfs.NextSequence(tx)
-		if err != nil {
-			return err
-		}
-		d = Dir{
-			dir:   dir,
-			Path:  baseKey,
-			Inode: seq,
-			Mode:  0770 | os.ModeDir,
-			GID:   dir.mfs.config.gid,
-			UID:   dir.mfs.config.uid,
-		}
-		if err = d.store(tx); err != nil {
-			return err
-		}
-	} // else {
-	// For all other errors this operation fails.
-	return err
+// Dirent will return the fuse Dirent for current dir
+func (dir Dir) Dirpath() string {
+	return dir.Path
 }
 
-func (dir *Dir) storeDir(bucket *meta.Bucket, tx *meta.Tx, baseKey string, objInfo minio.ObjectInfo) error {
-	var d Dir
-	err := bucket.Get(baseKey, &d)
-	if err == nil {
-		// Prefix already exists and accessible, update values as needed.
-		d.dir = dir
-		d.mfs = dir.mfs
-	} else if meta.IsNoSuchObject(err) {
-		// Prefix not found allocate a new inode and create a new directory.
-		var seq uint64
-		seq, err = dir.mfs.NextSequence(tx)
-		if err != nil {
-			return err
-		}
-		d = Dir{
-			dir:   dir,
-			Path:  baseKey,
-			Inode: seq,
-			Mode:  0770 | os.ModeDir,
-			GID:   dir.mfs.config.gid,
-			UID:   dir.mfs.config.uid,
-
-			Chgtime: objInfo.LastModified,
-			Crtime:  objInfo.LastModified,
-			Mtime:   objInfo.LastModified,
-			Atime:   objInfo.LastModified,
-		}
-		if err = d.store(tx); err != nil {
-			return err
-		}
-	} // else {
-	// For all other errors this operation fails.
-	return err
-}
-
-func (dir *Dir) scanRoot(ctx context.Context, Uid uint32) (entries []Dir, err error) {
+func (dir *Dir) scanRoot(ctx context.Context, Uid uint32) (entries []FilesystemElement, err error) {
 	fmt.Println(" +- scanRoot()")
 
 	prefix := dir.RemotePath()
@@ -258,7 +156,7 @@ func (dir *Dir) scanRoot(ctx context.Context, Uid uint32) (entries []Dir, err er
 	return entries, nil
 }
 
-func (dir *Dir) scanBucket(ctx context.Context, uid uint32) (entries []Dir, err error) {
+func (dir *Dir) scanBucket(ctx context.Context, uid uint32) (entries []FilesystemElement, err error) {
 
 	bucket := strings.Split(dir.RemotePath(), "/")[0] // Bucket will always be given as first part of remote path
 
@@ -294,17 +192,29 @@ func (dir *Dir) scanBucket(ctx context.Context, uid uint32) (entries []Dir, err 
 				dir:   dir,
 				Path:  path,
 				Inode: seq,
-				Mode:  0770 | os.ModeDir,
+				Mode:  0555 | os.ModeDir,
 				GID:   dir.mfs.config.gid,
 				UID:   dir.mfs.config.uid,
 			}
 
 			entries = append(entries, d)
+		} else {
+			var f = File{
+				dir:     dir,
+				Path:    path,
+				Size:    uint64(objInfo.Size),
+				Inode:   seq,
+				Mode:    dir.mfs.config.mode,
+				GID:     dir.mfs.config.gid,
+				UID:     dir.mfs.config.uid,
+				Chgtime: objInfo.LastModified,
+				Crtime:  objInfo.LastModified,
+				Mtime:   objInfo.LastModified,
+				Atime:   objInfo.LastModified,
+				ETag:    objInfo.ETag,
+			}
+			entries = append(entries, f)
 		}
-		// 	dir.storeDir(b, tx, baseKey, objInfo)
-		// } else {
-		// 	dir.storeFile(b, tx, baseKey, objInfo)
-		// }
 	}
 
 	return entries, nil
@@ -314,7 +224,7 @@ func (dir *Dir) scanBucket(ctx context.Context, uid uint32) (entries []Dir, err 
 func (dir *Dir) ReadDirAll(ctx context.Context, uid uint32) (entries []fuse.Dirent, err error) {
 	fmt.Println("ReadDirAll(), dir.RemotePath =", dir.RemotePath(), ",uid =", uid)
 
-	var scanDirs = []Dir{}
+	var scanDirs []FilesystemElement
 
 	switch dir.Path {
 	case "":
@@ -343,7 +253,7 @@ func (dir *Dir) ReadDirAll(ctx context.Context, uid uint32) (entries []fuse.Dire
 func (dir *Dir) Lookup(ctx context.Context, name string, uid uint32) (node fs.Node, err error) {
 	fmt.Println("Lookup():, dir.Path =", dir.Path, ", name =", name, ", uid = ", uid)
 
-	var scanDirs = []Dir{}
+	var scanDirs []FilesystemElement
 
 	switch dir.Path {
 	case "":
@@ -363,7 +273,7 @@ func (dir *Dir) Lookup(ctx context.Context, name string, uid uint32) (node fs.No
 	// I Have zero clue what this interface business is,
 	var o interface{} // Okay i like it, Picasso
 	for idx := range scanDirs {
-		if scanDirs[idx].Path == name {
+		if scanDirs[idx].Dirpath() == name {
 			o = (scanDirs[idx])
 		}
 	}
@@ -383,6 +293,31 @@ func (dir *Dir) Lookup(ctx context.Context, name string, uid uint32) (node fs.No
 	return nil, fuse.ENOENT
 }
 
+// Mkdir will make a new directory below current dir
+func (dir *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
+	fmt.Println("Mkdir() not allowed")
+	return nil, nil
+}
+
+// Remove will delete a file or directory from current directory
+func (dir *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
+	fmt.Println("Remove() not allowed")
+	return nil
+}
+
+// Create will return a new empty file in current dir, if the file is currently locked, it will
+// wait for the lock to be freed.
+func (dir *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
+	fmt.Println("Create() not allowed")
+	return nil, nil, nil
+}
+
+// Rename will rename files
+func (dir *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, nd fs.Node) error {
+	fmt.Println("Rename() not allowed")
+	return nil
+}
+
 func (dir *Dir) bucket(tx *meta.Tx) *meta.Bucket {
 	// Root folder.
 	if dir.dir == nil {
@@ -392,173 +327,4 @@ func (dir *Dir) bucket(tx *meta.Tx) *meta.Bucket {
 	b := dir.dir.bucket(tx)
 
 	return b.Bucket(dir.Path + "/")
-}
-
-// Mkdir will make a new directory below current dir
-func (dir *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
-	subdir := Dir{
-		dir: dir,
-		mfs: dir.mfs,
-
-		Path: req.Name,
-
-		Mode: 0770 | os.ModeDir,
-		GID:  dir.mfs.config.gid,
-		UID:  dir.mfs.config.uid,
-
-		Chgtime: time.Now(),
-		Crtime:  time.Now(),
-		Mtime:   time.Now(),
-		Atime:   time.Now(),
-	}
-
-	tx, err := dir.mfs.db.Begin(true)
-	if err != nil {
-		return nil, err
-	}
-
-	defer tx.Rollback()
-
-	if err := subdir.store(tx); err != nil {
-		return nil, err
-	}
-
-	// Commit the transaction and check for error.
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
-
-	return &subdir, nil
-}
-
-// Remove will delete a file or directory from current directory
-func (dir *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
-	if err := dir.mfs.wait(path.Join(dir.FullPath(), req.Name)); err != nil {
-		return err
-	}
-
-	tx, err := dir.mfs.db.Begin(true)
-	if err != nil {
-		return err
-	}
-
-	defer tx.Rollback()
-
-	b := dir.bucket(tx)
-
-	var o interface{}
-	if err := b.Get(req.Name, &o); meta.IsNoSuchObject(err) {
-		return fuse.ENOENT
-	} else if err != nil {
-		return err
-	} else if err := b.Delete(req.Name); err != nil {
-		return err
-	}
-
-	if req.Dir {
-		b.DeleteBucket(req.Name + "/")
-	}
-
-	// if err := dir.mfs.api.RemoveObject(ctx, dir.mfs.config.bucket, path.Join(dir.RemotePath(), req.Name), minio.RemoveObjectOptions{}); err != nil {
-	// 	return err
-	// }
-
-	return tx.Commit()
-}
-
-// store the dir object in cache
-func (dir *Dir) store(tx *meta.Tx) error {
-	// directories will be stored in their parent buckets
-	b := dir.dir.bucket(tx)
-
-	subbucketPath := path.Base(dir.Path)
-	if _, err := b.CreateBucketIfNotExists(subbucketPath + "/"); err != nil {
-		return err
-	}
-	fmt.Printf("Storing %v at %s as %T\n", dir, subbucketPath, dir)
-
-	return b.Put(subbucketPath, dir)
-}
-
-// Dirent will return the fuse Dirent for current dir
-func (dir *Dir) Dirent() fuse.Dirent {
-	return fuse.Dirent{
-		Inode: dir.Inode, Name: dir.Path, Type: fuse.DT_Dir,
-	}
-}
-
-// Create will return a new empty file in current dir, if the file is currently locked, it will
-// wait for the lock to be freed.
-func (dir *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
-	if err := dir.mfs.wait(path.Join(dir.FullPath(), req.Name)); err != nil {
-		return nil, nil, err
-	}
-
-	tx, err := dir.mfs.db.Begin(true)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	defer tx.Rollback()
-
-	b := dir.bucket(tx)
-
-	name := req.Name
-
-	var f File
-	if gerr := b.Get(name, &f); gerr == nil {
-		f.mfs = dir.mfs
-		f.dir = dir
-	} else if i, nerr := dir.mfs.NextSequence(tx); nerr != nil {
-		return nil, nil, nerr
-	} else {
-		f = File{
-			mfs: dir.mfs,
-			dir: dir,
-
-			Size:    uint64(0),
-			Inode:   i,
-			Path:    req.Name,
-			Mode:    req.Mode, // dir.mfs.config.mode, // should we use same mode for scan?
-			UID:     dir.mfs.config.uid,
-			GID:     dir.mfs.config.gid,
-			Chgtime: time.Now().UTC(),
-			Crtime:  time.Now().UTC(),
-			Mtime:   time.Now().UTC(),
-			Atime:   time.Now().UTC(),
-			ETag:    "",
-
-			// req.Umask
-		}
-	}
-
-	if serr := f.store(tx); serr != nil {
-		return nil, nil, serr
-	}
-
-	var fh *FileHandle
-	if fh, err = dir.mfs.Acquire(&f, f.FullPath()); err != nil {
-		return nil, nil, err
-	}
-	fh.dirty = true
-	if fh.cachePath, err = dir.mfs.NewCachePath(); err != nil {
-		return nil, nil, err
-	}
-	if fh.File, err = os.OpenFile(fh.cachePath, int(req.Flags), dir.mfs.config.mode); err != nil {
-		return nil, nil, err
-	}
-
-	// Commit the transaction and check for error.
-	if err = tx.Commit(); err != nil {
-		return nil, nil, err
-	}
-
-	resp.Handle = fuse.HandleID(fh.handle)
-	return &f, fh, nil
-}
-
-// Rename will rename files
-func (dir *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, nd fs.Node) error {
-	fmt.Println("Rename() not allowed")
-	return nil
 }

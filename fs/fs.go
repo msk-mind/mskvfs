@@ -111,7 +111,7 @@ func New(options ...func(*Config)) (*MinFS, error) {
 		uid:       0,
 		accessKey: ac.AccessKey,
 		secretKey: ac.SecretKey,
-		mode:      os.FileMode(0440),
+		mode:      os.FileMode(0444),
 	}
 
 	for _, optionFn := range options {
