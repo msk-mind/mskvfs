@@ -131,22 +131,17 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	})
 }
 
-// RemotePath will return the full path on bucket
-func (f *File) RemotePath() string {
-	return path.Join(f.dir.RemotePath(), f.Path)
-}
-
-func (f *File) ObjectPath() string {
-	return strings.Replace(f.RemotePath(), f.Bucket()+"/", "", 1)
-}
-
 // FullPath will return the full path
 func (f *File) FullPath() string {
 	return path.Join(f.dir.FullPath(), f.Path)
 }
 
+func (f *File) ObjectPath() string {
+	return strings.Replace(f.FullPath(), f.Bucket()+"/", "", 1)
+}
+
 func (f *File) Bucket() string {
-	return strings.Split(f.RemotePath(), "/")[0] // Bucket will always be given as first part of remote path
+	return strings.Split(f.FullPath(), "/")[0] // Bucket will always be given as first part of remote path
 }
 
 // Saves a new file at cached path and fetches the object based on

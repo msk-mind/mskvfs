@@ -30,7 +30,7 @@ import (
 	minio "github.com/minio/minio-go/v7"
 )
 
-type FilesystemElement interface {
+type FilesystemElement interface { // Okay i like it, Picasso
 	Dirpath() string
 	Dirent() fuse.Dirent
 }
@@ -81,12 +81,7 @@ func (dir *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
-// RemotePath returns the full path including parent paths for current dir on the remote
-func (dir *Dir) RemotePath() string {
-	return path.Join(dir.mfs.config.basePath, dir.FullPath())
-}
-
-// FullPath returns the full path including parent paths for current dir
+// FullPath returns the full path including parent paths for current dir, recursive
 func (dir *Dir) FullPath() string {
 	fullPath := ""
 
@@ -104,6 +99,16 @@ func (dir *Dir) FullPath() string {
 	return fullPath
 }
 
+// Bucket returns the first element of the fullpath
+func (dir *Dir) Bucket() string {
+	return strings.Split(dir.FullPath(), "/")[0]
+}
+
+// Search prefix returns everything after the bucket, or nothing if it is the bucket
+func (dir *Dir) SearchPrefix() string {
+	return strings.Replace(dir.FullPath()+"/", dir.Bucket()+"/", "", 1)
+}
+
 // Dirent will return the fuse Dirent for current dir
 func (dir Dir) Dirent() fuse.Dirent {
 	return fuse.Dirent{
@@ -111,15 +116,14 @@ func (dir Dir) Dirent() fuse.Dirent {
 	}
 }
 
-// Dirent will return the fuse Dirent for current dir
+// Dirpath returns the directory path element
 func (dir Dir) Dirpath() string {
 	return dir.Path
 }
 
+// Returns FileElements given a scanRoot request (./)
 func (dir *Dir) scanRoot(ctx context.Context, Uid uint32) (entries []FilesystemElement, err error) {
-	fmt.Println(" +- scanRoot()")
-
-	prefix := dir.RemotePath()
+	prefix := dir.FullPath()
 	if prefix != "" {
 		prefix = prefix + "/"
 	}
@@ -156,13 +160,11 @@ func (dir *Dir) scanRoot(ctx context.Context, Uid uint32) (entries []FilesystemE
 	return entries, nil
 }
 
+// Returns FileElements given a scanBucket request by querying minio
 func (dir *Dir) scanBucket(ctx context.Context, uid uint32) (entries []FilesystemElement, err error) {
 
-	bucket := strings.Split(dir.RemotePath(), "/")[0] // Bucket will always be given as first part of remote path
-
-	prefix := strings.Replace(dir.RemotePath()+"/", bucket+"/", "", 1) // We need prefix paths to end in / if they aren't empty
-
-	fmt.Println(" +- scanBucket():", dir.RemotePath(), ", bucket=", bucket, ",prefix=", prefix)
+	bucket := dir.Bucket()
+	prefix := dir.SearchPrefix()
 
 	api, err := dir.mfs.getApi(uid)
 	if err != nil {
@@ -182,10 +184,6 @@ func (dir *Dir) scanBucket(ctx context.Context, uid uint32) (entries []Filesyste
 		seq += 1
 
 		path := path.Base(key)
-
-		fmt.Println(" +- Found Object:", "Key:", objInfo.Key, "Used key:", key, "path:", path)
-
-		// object still exists
 
 		if strings.HasSuffix(key, "/") {
 			var d = Dir{
@@ -222,28 +220,25 @@ func (dir *Dir) scanBucket(ctx context.Context, uid uint32) (entries []Filesyste
 
 // ReadDirAll will return all files in current dir
 func (dir *Dir) ReadDirAll(ctx context.Context, uid uint32) (entries []fuse.Dirent, err error) {
-	fmt.Println("ReadDirAll(), dir.RemotePath =", dir.RemotePath(), ",uid =", uid)
 
-	var scanDirs []FilesystemElement
+	var fsElements []FilesystemElement
 
 	switch dir.Path {
 	case "":
-		scanDirs, err = dir.scanRoot(ctx, uid)
+		fsElements, err = dir.scanRoot(ctx, uid)
 		if err != nil {
 			return nil, err
 		}
 	default:
-		scanDirs, err = dir.scanBucket(ctx, uid)
+		fsElements, err = dir.scanBucket(ctx, uid)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	for _, x := range scanDirs {
+	for _, x := range fsElements {
 		entries = append(entries, x.Dirent())
 	}
-
-	fmt.Println("Completed ReadDirAll:", entries)
 
 	return entries, nil
 
@@ -251,40 +246,34 @@ func (dir *Dir) ReadDirAll(ctx context.Context, uid uint32) (entries []fuse.Dire
 
 // Lookup returns the file node, and scans the current dir if necessary
 func (dir *Dir) Lookup(ctx context.Context, name string, uid uint32) (node fs.Node, err error) {
-	fmt.Println("Lookup():, dir.Path =", dir.Path, ", name =", name, ", uid = ", uid)
 
-	var scanDirs []FilesystemElement
+	var fsElements []FilesystemElement
 
 	switch dir.Path {
 	case "":
-		scanDirs, err = dir.scanRoot(ctx, uid)
+		fsElements, err = dir.scanRoot(ctx, uid)
 		if err != nil {
 			return nil, err
 		}
 	default:
-		scanDirs, err = dir.scanBucket(ctx, uid)
+		fsElements, err = dir.scanBucket(ctx, uid)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	fmt.Println("Completed scan:", scanDirs)
-
-	// I Have zero clue what this interface business is,
-	var o interface{} // Okay i like it, Picasso
-	for idx := range scanDirs {
-		if scanDirs[idx].Dirpath() == name {
-			o = (scanDirs[idx])
+	var o interface{}
+	for idx := range fsElements {
+		if fsElements[idx].Dirpath() == name {
+			o = fsElements[idx]
 		}
 	}
 
 	if file, ok := o.(File); ok {
-		fmt.Println("file=", file)
 		file.mfs = dir.mfs
 		file.dir = dir
 		return &file, nil
 	} else if subdir, ok := o.(Dir); ok {
-		fmt.Println("subdir=", subdir)
 		subdir.mfs = dir.mfs
 		subdir.dir = dir
 		return &subdir, nil
@@ -305,8 +294,7 @@ func (dir *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	return nil
 }
 
-// Create will return a new empty file in current dir, if the file is currently locked, it will
-// wait for the lock to be freed.
+// Create will return a new empty file in current dir, if the file is currently locked, it will wait for the lock to be freed.
 func (dir *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	fmt.Println("Create() not allowed")
 	return nil, nil, nil

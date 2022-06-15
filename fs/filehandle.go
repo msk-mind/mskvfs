@@ -99,7 +99,7 @@ func (fh *FileHandle) Flush(ctx context.Context, req *fuse.FlushRequest) error {
 		return nil
 	}
 
-	sr := newPutOp(fh.Name(), fh.f.RemotePath(), int64(fh.f.Size))
+	sr := newPutOp(fh.Name(), fh.f.FullPath(), int64(fh.f.Size))
 	if err := fh.f.mfs.sync(&sr); err != nil {
 		return err
 	}
