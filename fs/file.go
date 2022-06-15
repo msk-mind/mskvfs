@@ -187,10 +187,8 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 // Generates a cache path based on the minio MD5 checksum
 func (f *File) cacheAllocate(ctx context.Context, api *minio.Client) (string, error) {
 
-	fmt.Println(f.Bucket(), f.ObjectPath())
 	object, err := api.StatObject(ctx, f.Bucket(), f.ObjectPath(), minio.GetObjectOptions{})
 
-	fmt.Println(object)
 	if err != nil {
 		if meta.IsNoSuchObject(err) {
 			return "", fuse.ENOENT
