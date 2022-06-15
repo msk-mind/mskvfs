@@ -21,12 +21,10 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
-	"mime"
 	"net"
 	"net/http"
 	"os"
 	"path"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -289,16 +287,6 @@ func (mfs *MinFS) Serve() (err error) {
 		return err
 	}
 
-	// Validate if the bucket is valid and accessible.
-	exists, err := mfs.api.BucketExists(context.Background(), mfs.config.bucket)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		mfs.log.Println("Bucket doesn't not exist... aborting")
-		return os.ErrNotExist
-	}
-
 	if err = mfs.startSync(); err != nil {
 		return err
 	}
@@ -331,52 +319,15 @@ func (mfs *MinFS) sync(req interface{}) error {
 }
 
 func (mfs *MinFS) moveOp(req *MoveOperation) {
-	dst := minio.CopyDestOptions{
-		Bucket: mfs.config.bucket,
-		Object: req.Target,
-	}
-	src := minio.CopySrcOptions{
-		Bucket: mfs.config.bucket,
-		Object: req.Source,
-	}
-	if _, err := mfs.api.CopyObject(context.Background(), dst, src); err != nil {
-		req.Error <- err
-		return
-	}
-	req.Error <- mfs.api.RemoveObject(context.Background(), mfs.config.bucket, req.Source, minio.RemoveObjectOptions{})
+	fmt.Println("moveOp() removed")
 }
 
 func (mfs *MinFS) copyOp(req *CopyOperation) {
-	dst := minio.CopyDestOptions{
-		Bucket: mfs.config.bucket,
-		Object: req.Target,
-	}
-	src := minio.CopySrcOptions{
-		Bucket: mfs.config.bucket,
-		Object: req.Source,
-	}
-	_, err := mfs.api.CopyObject(context.Background(), dst, src)
-	req.Error <- err
+	fmt.Println("copyOp() removed")
 }
 
 func (mfs *MinFS) putOp(req *PutOperation) {
-	r, err := os.Open(req.Source)
-	if err != nil {
-		req.Error <- err
-		return
-	}
-	defer r.Close()
-
-	ops := minio.PutObjectOptions{
-		ContentType: mime.TypeByExtension(filepath.Ext(req.Target)),
-	}
-	_, err = mfs.api.PutObject(context.Background(), mfs.config.bucket, req.Target, r, req.Length, ops)
-	if err != nil {
-		req.Error <- err
-		return
-	}
-	mfs.log.Printf("Upload finished: %s -> %s.\n", req.Source, req.Target)
-	req.Error <- nil
+	fmt.Println("putOp() removed")
 }
 
 func (mfs *MinFS) startSync() error {

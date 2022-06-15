@@ -80,39 +80,6 @@ func (dir *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
-// // Lookup returns the file node, and scans the current dir if necessary
-// func (dir *Dir) Lookup(ctx context.Context, name string, uid uint32) (fs.Node, error) {
-// 	fmt.Println("Lookup:", dir.Path, name, uid)
-
-// 	if err := dir.scanBucket(ctx, name, uid); err != nil {
-// 		return nil, err
-// 	}
-
-// 	// we are not statting each object here because of performance reasons
-// 	var o interface{} // meta.Object
-// 	if err := dir.mfs.db.View(func(tx *meta.Tx) error {
-// 		b := dir.bucket(tx)
-// 		return b.Get(name, &o)
-// 	}); err == nil {
-// 	} else if meta.IsNoSuchObject(err) {
-// 		return nil, fuse.ENOENT
-// 	} else if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if file, ok := o.(File); ok {
-// 		file.mfs = dir.mfs
-// 		file.dir = dir
-// 		return &file, nil
-// 	} else if subdir, ok := o.(Dir); ok {
-// 		subdir.mfs = dir.mfs
-// 		subdir.dir = dir
-// 		return &subdir, nil
-// 	}
-
-// 	return nil, fuse.ENOENT
-// }
-
 // RemotePath returns the full path including parent paths for current dir on the remote
 func (dir *Dir) RemotePath() string {
 	return path.Join(dir.mfs.config.basePath, dir.FullPath())
@@ -492,9 +459,9 @@ func (dir *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		b.DeleteBucket(req.Name + "/")
 	}
 
-	if err := dir.mfs.api.RemoveObject(ctx, dir.mfs.config.bucket, path.Join(dir.RemotePath(), req.Name), minio.RemoveObjectOptions{}); err != nil {
-		return err
-	}
+	// if err := dir.mfs.api.RemoveObject(ctx, dir.mfs.config.bucket, path.Join(dir.RemotePath(), req.Name), minio.RemoveObjectOptions{}); err != nil {
+	// 	return err
+	// }
 
 	return tx.Commit()
 }
@@ -592,109 +559,6 @@ func (dir *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.
 
 // Rename will rename files
 func (dir *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, nd fs.Node) error {
-	tx, err := dir.mfs.db.Begin(true)
-	if err != nil {
-		return err
-	}
-
-	defer tx.Rollback()
-
-	b := dir.bucket(tx)
-
-	newDir := nd.(*Dir)
-
-	var o interface{}
-	if err := b.Get(req.OldName, &o); err != nil {
-		return err
-	} else if file, ok := o.(File); ok {
-		file.dir = dir
-
-		if err := b.Delete(file.Path); err != nil {
-			return err
-		}
-
-		oldPath := file.RemotePath()
-
-		file.Path = req.NewName
-		file.dir = newDir
-		file.mfs = dir.mfs
-
-		sr := newMoveOp(oldPath, file.RemotePath())
-		if err := dir.mfs.sync(&sr); err == nil {
-		} else if meta.IsNoSuchObject(err) {
-			return fuse.ENOENT
-		} else if err != nil {
-			return err
-		}
-
-		// we'll wait for the request to be uploaded and synced, before
-		// releasing the file
-		if err := <-sr.Error; err != nil {
-			return err
-		}
-
-		if err := file.store(tx); err != nil {
-			return err
-		}
-
-	} else if subdir, ok := o.(Dir); ok {
-		// rescan in case of abort / partial / failure
-		// this will repair the cache
-		dir.scanned = false
-
-		if err := b.Delete(req.OldName); err != nil {
-			return err
-		}
-
-		if err := b.DeleteBucket(req.OldName + "/"); err != nil {
-			return err
-		}
-
-		newDir.scanned = false
-
-		// fusebug?
-		// the cached node is still invalid, contains the old name
-		// but there is no way to retrieve the old node to update the new
-		// name. refreshing the parent node won't fix the issue when
-		// direct access. Fuse should add the targetnode (subdir) as well,
-		// that can be updated.
-
-		subdir.Path = req.NewName
-		subdir.dir = newDir
-		subdir.mfs = dir.mfs
-
-		if err := subdir.store(tx); err != nil {
-			return err
-		}
-
-		oldPath := path.Join(dir.RemotePath(), req.OldName)
-
-		ch := dir.mfs.api.ListObjects(ctx, dir.mfs.config.bucket, minio.ListObjectsOptions{
-			Prefix:    oldPath + "/",
-			Recursive: true,
-		})
-
-		for message := range ch {
-			newPath := path.Join(newDir.RemotePath(), req.NewName, message.Key[len(oldPath):])
-
-			sr := newMoveOp(message.Key, newPath)
-			if err := dir.mfs.sync(&sr); err == nil {
-			} else if meta.IsNoSuchObject(err) {
-				return fuse.ENOENT
-			} else if err != nil {
-				return err
-			}
-
-			// we'll wait for the request to be uploaded and synced, before
-			// releasing the file
-			if err := <-sr.Error; err != nil {
-				return err
-			}
-		}
-	} else {
-		return fuse.ENOSYS
-	}
-
-	// Commit the transaction and check for error.
-	return tx.Commit()
+	fmt.Println("Rename() not allowed")
+	return nil
 }

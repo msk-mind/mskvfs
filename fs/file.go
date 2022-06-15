@@ -159,7 +159,7 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 
 	// FGetObject faster, safer implimentation for large files
 	// mfs.log.Println("FGetObject():", ctx, f.mfs.config.bucket, f.RemotePath(), path, minio.GetObjectOptions{})
-	err := f.mfs.api.FGetObject(ctx, f.mfs.config.bucket, f.RemotePath(), path, minio.GetObjectOptions{})
+	err := f.mfs.api.FGetObject(ctx, "bucket", f.RemotePath(), path, minio.GetObjectOptions{})
 	if err != nil {
 		if meta.IsNoSuchObject(err) {
 			return fuse.ENOENT
@@ -182,7 +182,7 @@ func (f *File) cacheSave(ctx context.Context, path string, req *fuse.OpenRequest
 
 // Generates a cache path based on the minio MD5 checksum
 func (f *File) cacheAllocate(ctx context.Context) (string, error) {
-	object, err := f.mfs.api.StatObject(ctx, f.mfs.config.bucket, f.RemotePath(), minio.GetObjectOptions{})
+	object, err := f.mfs.api.StatObject(ctx, "bucket", f.RemotePath(), minio.GetObjectOptions{})
 
 	if err != nil {
 		if meta.IsNoSuchObject(err) {
