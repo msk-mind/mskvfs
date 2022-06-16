@@ -172,7 +172,7 @@ func (mfs *MinFS) getApi(uid uint32) (api *minio.Client, err error) {
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: mfs.config.insecure,
+			InsecureSkipVerify: false,
 		},
 		// Set this value so that the underlying transport round-tripper
 		// doesn't try to auto decode the body of objects with
