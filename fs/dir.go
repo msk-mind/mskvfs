@@ -134,6 +134,7 @@ func (dir *Dir) scanRoot(ctx context.Context, Uid uint32) (entries []FilesystemE
 	}
 
 	ch, err := api.ListBuckets(ctx)
+
 	if err != nil {
 		return nil, err
 	}
@@ -239,6 +240,7 @@ func (dir *Dir) ReadDirAll(ctx context.Context, uid uint32) (entries []fuse.Dire
 	for _, x := range fsElements {
 		entries = append(entries, x.Dirent())
 	}
+	fmt.Println("Completed ReadDirAll:", entries)
 
 	return entries, nil
 
