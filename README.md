@@ -20,6 +20,8 @@ MinFS uses [BoltDB](https://github.com/boltdb/bolt) for caching and saving metad
 
 > Be careful, it is always possible to remove boltdb cache. Cache will be recreated by MinFS synchronizing metadata from the server.
 
+Important: to use UID-based request handling, this fork of fuse must be used: https://github.com/aauker/fuse
+
 # Architecture
 ![architecture](https://raw.githubusercontent.com/minio/minfs/master/MinFS.svg?sanitize=true)
 
