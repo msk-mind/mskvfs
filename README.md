@@ -22,6 +22,10 @@ MinFS uses [BoltDB](https://github.com/boltdb/bolt) for caching and saving metad
 
 Important: to use UID-based request handling, this fork of fuse must be used: https://github.com/aauker/fuse
 
+## Setup Service or "Persistent Mount"
+
+The script `setup_service.sh` provides a template of instructions to initialize the mskvfs service on a linux machine. 
+
 # Architecture
 ![architecture](https://raw.githubusercontent.com/minio/minfs/master/MinFS.svg?sanitize=true)
 
